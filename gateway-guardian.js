@@ -1,13 +1,17 @@
-// Gateway 进程守护模块 — 指数退避 + 自适应频率 + 深度健康检查
+// Gateway 进程守护模块 — 指数退避 + 自适应频率 + 深度健康检查 + 性能监控
 const EventEmitter = require('events');
-const path = require('path');
-const fs = require('fs');
+const GatewayMetricsCollector = require('./utils/gateway-metrics-collector');
+const GatewayHealthScorer = require('./utils/gateway-health-scorer');
+const GatewayAnomalyDetector = require('./utils/gateway-anomaly-detector');
 
 class GatewayGuardian extends EventEmitter {
     constructor(serviceManager, options = {}) {
         super();
         this.serviceManager = serviceManager;
-        this.gatewayHost = options.gatewayHost || 'http://127.0.0.1:18789';
+        this.gatewayHost = options.gatewayHost
+            || (serviceManager && typeof serviceManager.getGatewayHost === 'function'
+                ? serviceManager.getGatewayHost()
+                : 'http://127.0.0.1:18789');
         this.maxRestarts = options.maxRestarts || 10;
         this.restartWindow = options.restartWindow || 60 * 60 * 1000; // 1小时
 
@@ -17,7 +21,7 @@ class GatewayGuardian extends EventEmitter {
         this.maxInterval = 300000;      // 退避上限 5min
 
         // 深度检查：每 N 次浅检查做 1 次深度检查
-        this.deepCheckEvery = 3;
+        this.deepCheckEvery = 6;  // 降低深度检查频率，避免误判
         this.checkCount = 0;
 
         // 连续重启失败后自动清理 session 的阈值
@@ -31,13 +35,25 @@ class GatewayGuardian extends EventEmitter {
         this.restartHistory = [];
         this.isRestarting = false; // 防止重复触发
         this._lastError = null;   // 最近一次错误原因
+
+        // 新增：性能监控模块
+        this.metricsCollector = new GatewayMetricsCollector();
+        this.healthScorer = new GatewayHealthScorer(this.metricsCollector);
+        this.anomalyDetector = new GatewayAnomalyDetector(this.metricsCollector);
+
+        // 基线更新定时器（每 5 分钟更新一次基线）
+        this.baselineUpdateInterval = 5 * 60 * 1000;
+        this.baselineTimer = null;
     }
 
     start() {
         if (this.isRunning) return;
 
-        console.log('[Guardian] 启动 Gateway 守护');
+        console.log('[Guardian] 启动 Gateway 守护（增强监控模式）');
         this.isRunning = true;
+
+        // 启动基线更新定时器
+        this._startBaselineUpdater();
 
         this._check();
         this.emit('started');
@@ -47,7 +63,22 @@ class GatewayGuardian extends EventEmitter {
         console.log('[Guardian] 停止 Gateway 守护');
         this.isRunning = false;
         this._clearTimer();
+        this._stopBaselineUpdater();
         this.emit('stopped');
+    }
+
+    _startBaselineUpdater() {
+        this.baselineTimer = setInterval(() => {
+            this.anomalyDetector.updateBaseline();
+            console.log('[Guardian] 基线已更新');
+        }, this.baselineUpdateInterval);
+    }
+
+    _stopBaselineUpdater() {
+        if (this.baselineTimer) {
+            clearInterval(this.baselineTimer);
+            this.baselineTimer = null;
+        }
     }
 
     // 调度下一次检查
@@ -65,14 +96,33 @@ class GatewayGuardian extends EventEmitter {
         }
     }
 
+    _getGatewayHost() {
+        if (this.serviceManager && typeof this.serviceManager.getGatewayHost === 'function') {
+            return this.serviceManager.getGatewayHost();
+        }
+        return this.gatewayHost;
+    }
+
     // 核心检查循环
     async _check() {
         if (!this.isRunning) return;
 
-        this.checkCount++;
-        // 周期性做深度检查，避免 "假活"
-        const needDeepCheck = this.checkCount % this.deepCheckEvery === 0;
-        const healthy = needDeepCheck ? await this._deepPing() : await this._ping();
+        const startTime = Date.now();
+
+        // 只使用浅检查，避免深度检查触发 LLM 请求导致误判
+        const healthy = await this._ping();
+        const responseTime = Date.now() - startTime;
+
+        // 记录指标
+        this.metricsCollector.recordRequest(healthy, responseTime, healthy ? null : 'ping_failed');
+        this.metricsCollector.recordAvailability(healthy);
+
+        // 检测异常
+        const anomalies = this.anomalyDetector.detectAnomalies();
+        if (anomalies.length > 0) {
+            console.log('[Guardian] 检测到异常:', anomalies.map(a => a.message).join(', '));
+            this.emit('anomalies', anomalies);
+        }
 
         if (healthy) {
             this._onHealthy();
@@ -84,16 +134,19 @@ class GatewayGuardian extends EventEmitter {
     // 浅检查：HTTP GET 根路径
     async _ping() {
         try {
+            const gatewayHost = this._getGatewayHost();
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000);
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-            const response = await fetch(this.gatewayHost, {
+            const response = await fetch(gatewayHost, {
                 method: 'GET',
                 signal: controller.signal
             });
 
             clearTimeout(timeoutId);
-            return response.ok || response.status === 200;
+            // 只要有 HTTP 响应就说明 Gateway 进程在线（401/403/404 也算在线）
+            // 真正不可用会表现为连接异常/超时并进入 catch
+            return Number.isInteger(response.status);
         } catch {
             return false;
         }
@@ -102,18 +155,21 @@ class GatewayGuardian extends EventEmitter {
     // 深度检查：实际调用 API 验证业务层没卡死
     async _deepPing() {
         try {
+            const gatewayHost = this._getGatewayHost();
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-            const response = await fetch(`${this.gatewayHost}/v1/models`, {
+            const response = await fetch(`${gatewayHost}/v1/models`, {
                 method: 'GET',
                 signal: controller.signal
             });
 
             clearTimeout(timeoutId);
 
-            if (!response.ok && response.status !== 200) {
-                return false;
+            // 只要有响应就算健康（包括 404），说明 gateway 在运行
+            // 只有完全无响应或超时才算异常
+            if (response.status >= 200 && response.status < 500) {
+                return true;
             }
 
             // 确认响应体可读（不是挂起状态）
@@ -153,6 +209,20 @@ class GatewayGuardian extends EventEmitter {
         // 连续失败 3 次，确认异常
         const reason = `连续失败 ${this.consecutiveFailures} 次`;
         console.log(`[Guardian] Gateway 异常: ${reason}`);
+
+        // 二次确认：与 ServiceManager 的探活结果做交叉校验，避免误判触发重启
+        if (this.serviceManager && typeof this.serviceManager.checkGateway === 'function') {
+            try {
+                const status = await this.serviceManager.checkGateway();
+                if (status?.status === 'running') {
+                    console.log('[Guardian] 二次确认 Gateway 在线，跳过重启');
+                    this._onHealthy();
+                    return;
+                }
+            } catch {
+                // 忽略二次确认异常，按原流程处理
+            }
+        }
 
         if (this.isRestarting) {
             // 正在重启中，用退避间隔等待
@@ -227,27 +297,18 @@ class GatewayGuardian extends EventEmitter {
     // 清理 session lock 文件（防止死锁导致 gateway 启动后卡住）
     _cleanupSessionLocks() {
         try {
-            const sessionDir = path.join(
-                process.env.HOME || process.env.USERPROFILE,
-                '.openclaw', 'agents', 'main', 'sessions'
-            );
+            const SessionLockManager = require('./utils/session-lock-manager');
+            const result = SessionLockManager.cleanupStaleLocks({
+                agentId: 'main',
+                force: false,
+                lockStaleMs: 120000
+            });
 
-            if (!fs.existsSync(sessionDir)) return;
-
-            const files = fs.readdirSync(sessionDir);
-            let cleaned = 0;
-
-            for (const file of files) {
-                if (file.endsWith('.lock')) {
-                    try {
-                        fs.unlinkSync(path.join(sessionDir, file));
-                        cleaned++;
-                    } catch { /* ignore */ }
-                }
+            if (result.removedLocks > 0) {
+                console.log(`[Guardian] 已清理 ${result.removedLocks} 个僵尸 session lock 文件`);
             }
-
-            if (cleaned > 0) {
-                console.log(`[Guardian] 已清理 ${cleaned} 个 session lock 文件`);
+            if (result.skippedLocks > 0) {
+                console.log(`[Guardian] 保留 ${result.skippedLocks} 个活跃 session lock 文件`);
             }
         } catch (err) {
             console.log(`[Guardian] 清理 session lock 失败: ${err.message}`);
@@ -281,6 +342,50 @@ class GatewayGuardian extends EventEmitter {
             maxRestarts: this.maxRestarts,
             canRestart: this._canRestart()
         };
+    }
+
+    // ==================== 新增：监控 API ====================
+
+    /**
+     * 获取健康度评分
+     */
+    getHealthScore() {
+        return this.healthScorer.calculateHealthScore();
+    }
+
+    /**
+     * 获取性能指标
+     */
+    getMetrics() {
+        return this.metricsCollector.getMetricsSummary();
+    }
+
+    /**
+     * 获取异常检测结果
+     */
+    getAnomalies() {
+        return this.anomalyDetector.getRecentAnomalies(10);
+    }
+
+    /**
+     * 获取完整状态（包含所有监控数据）
+     */
+    getFullStatus() {
+        return {
+            guardian: this.getStats(),
+            health: this.getHealthScore(),
+            metrics: this.getMetrics(),
+            anomalies: this.getAnomalies(),
+            timestamp: Date.now()
+        };
+    }
+
+    /**
+     * 清除监控数据
+     */
+    clearMetrics() {
+        this.metricsCollector.clear();
+        this.anomalyDetector.clearAnomalies();
     }
 }
 

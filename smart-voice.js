@@ -49,6 +49,14 @@ class SmartVoiceSystem {
         this.initTempDir();
     }
 
+    async initTempDir() {
+        try {
+            await fs.mkdir(this.tempDir, { recursive: true });
+        } catch (err) {
+            console.error('[Voice] ❌ 创建临时目录失败:', err.message);
+        }
+    }
+
     /**
      * 🔑 初始化 MiniMax TTS
      */
@@ -114,10 +122,13 @@ class SmartVoiceSystem {
         try {
             const configPath = path.join(__dirname, 'pet-config.json');
             const fsSync = require('fs');
+            const SafeConfigLoader = require('./utils/safe-config-loader');
             if (fsSync.existsSync(configPath)) {
-                return JSON.parse(fsSync.readFileSync(configPath, 'utf8'));
+                return SafeConfigLoader.load(configPath, {});
             }
-        } catch (err) {}
+        } catch (err) {
+            console.warn('[SmartVoice] 读取配置失败:', err?.message || err);
+        }
         return {};
     }
 
@@ -158,18 +169,15 @@ class SmartVoiceSystem {
         try {
             const configPath = path.join(__dirname, 'pet-config.json');
             const fsSync = require('fs');
+            const SafeConfigLoader = require('./utils/safe-config-loader');
             if (fsSync.existsSync(configPath)) {
-                const config = JSON.parse(fsSync.readFileSync(configPath, 'utf8'));
+                const config = SafeConfigLoader.load(configPath, {});
                 return config.dashscope?.apiKey || config.dashscopeApiKey || '';
             }
-        } catch (err) {}
+        } catch (err) {
+            console.warn('[SmartVoice] 获取 DashScope API Key 失败:', err?.message || err);
+        }
         return '';
-    }
-
-    async initTempDir() {
-        try {
-            await fs.mkdir(this.tempDir, { recursive: true });
-        } catch (err) {}
     }
 
     /**
@@ -771,7 +779,9 @@ class SmartVoiceSystem {
                     await fs.unlink(item.path);
                     deleted++;
                     freed += item.size;
-                } catch (err) {}
+                } catch (err) {
+                    console.warn('[SmartVoice] 清理临时语音文件失败:', item.path, err?.message || err);
+                }
             }
             
             if (deleted > 0) {

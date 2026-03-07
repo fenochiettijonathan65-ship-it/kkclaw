@@ -218,9 +218,28 @@ class GlobalErrorHandler extends EventEmitter {
             global.gc();
         }
 
-        // 2. 清理缓存
-        if (global.clearImmediate) {
-            console.log('🧹 清理定时器...');
+        // 2. 清理 session 锁文件
+        try {
+            const SessionLockManager = require('./utils/session-lock-manager');
+            const result = SessionLockManager.cleanupStaleLocks({
+                agentId: 'main',
+                force: false,
+                lockStaleMs: 120000
+            });
+            if (result.removedLocks > 0) {
+                console.log(`🧹 清理僵尸锁文件: ${result.removedLocks}`);
+            }
+        } catch (err) {
+            console.warn('清理 session 锁失败:', err.message);
+        }
+
+        // 3. 重置配置缓存
+        try {
+            const configManager = require('./utils/config-manager');
+            configManager.clearCache();
+            console.log('🧹 清理配置缓存...');
+        } catch (err) {
+            console.warn('清理配置缓存失败:', err.message);
         }
 
         // 3. 触发自定义恢复钩子

@@ -1,9 +1,7 @@
 // OpenClaw 服务管理模块 - 按需检测版
 const { spawn, exec } = require('child_process');
-const path = require('path');
 const EventEmitter = require('events');
-
-const OPENCLAW_HOST = 'http://127.0.0.1:18789';
+const configManager = require('./utils/config-manager');
 
 class ServiceManager extends EventEmitter {
     constructor() {
@@ -22,6 +20,24 @@ class ServiceManager extends EventEmitter {
         this.maxLogs = 100;
         this._restartLock = false; // 防止并发重启
         this._startupState = null; // 启动状态追踪: { pid, startedAt, child }
+    }
+
+    _getGatewayPort() {
+        try {
+            const config = configManager.getConfig();
+            const parsed = Number.parseInt(config.gateway?.port, 10);
+            return Number.isInteger(parsed) && parsed > 0 ? parsed : 18789;
+        } catch {
+            return 18789;
+        }
+    }
+
+    _getGatewayHost() {
+        return `http://127.0.0.1:${this._getGatewayPort()}`;
+    }
+
+    getGatewayHost() {
+        return this._getGatewayHost();
     }
 
     // 开始（仅初始化，不轮询）
@@ -67,29 +83,25 @@ class ServiceManager extends EventEmitter {
     async checkGateway() {
         const service = this.services.gateway;
         const previousStatus = service.status;
+        const gatewayHost = this._getGatewayHost();
 
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000);
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-            const response = await fetch(OPENCLAW_HOST, {
+            const response = await fetch(gatewayHost, {
                 method: 'GET',
                 signal: controller.signal
             });
 
             clearTimeout(timeoutId);
 
-            if (response.ok || response.status === 200) {
-                service.status = 'running';
-                service.lastError = null;
-                if (previousStatus !== 'running') {
-                    service.uptime = Date.now();
-                    this.log('success', 'Gateway 已连接', 'gateway');
-                }
-            } else {
-                service.status = 'error';
-                service.lastError = `HTTP ${response.status}`;
-                this.log('error', `Gateway 返回错误: ${response.status}`, 'gateway');
+            // 任何HTTP响应（包括404）都说明gateway在运行
+            service.status = 'running';
+            service.lastError = null;
+            if (previousStatus !== 'running') {
+                service.uptime = Date.now();
+                this.log('success', 'Gateway 已连接', 'gateway');
             }
         } catch (err) {
             service.status = 'stopped';
@@ -151,7 +163,15 @@ class ServiceManager extends EventEmitter {
 
         this.log('info', `强制终止占用端口 ${port} 的进程: ${pids.join(', ')}`, 'gateway');
 
+        const IPCValidator = require('./utils/ipc-validator');
         const killPromises = pids.map(pid => new Promise((resolve) => {
+            // 验证 PID 防止命令注入
+            if (!IPCValidator.validatePID(pid)) {
+                this.log('warn', `无效的 PID: ${pid}`, 'gateway');
+                resolve();
+                return;
+            }
+
             const cmd = process.platform === 'win32'
                 ? `taskkill /PID ${pid} /F /T`
                 : `kill -9 ${pid}`;
@@ -191,8 +211,8 @@ class ServiceManager extends EventEmitter {
             this._startupState = null;
             return false;
         }
-        // 60 秒宽限期：gateway 可能需要较长时间初始化
-        const STARTUP_GRACE_MS = 60000;
+        // 120 秒宽限期：gateway 连接各种服务需要较长时间
+        const STARTUP_GRACE_MS = 120000;
         if (Date.now() - startedAt > STARTUP_GRACE_MS) {
             this.log('warn', '启动宽限期已过，放弃等待', 'gateway');
             this._startupState = null;
@@ -204,70 +224,39 @@ class ServiceManager extends EventEmitter {
     // 启动 Gateway
     async startGateway() {
         this.log('info', '正在启动 Gateway...', 'gateway');
+        const gatewayPort = this._getGatewayPort();
+
+        // 已有 gateway 在目标端口运行时直接复用，避免并发拉起多个实例
+        const preStatus = await this.checkGateway();
+        if (preStatus.status === 'running') {
+            this.log('info', `检测到 Gateway 已在端口 ${gatewayPort} 运行，跳过重复启动`, 'gateway');
+            return { success: true, alreadyRunning: true };
+        }
 
         // 启动前确保端口没被占用
-        const pids = await this._findPortPids(18789);
+        const pids = await this._findPortPids(gatewayPort);
         if (pids.length > 0) {
             this.log('warn', `启动前发现端口被占用 (PID: ${pids.join(', ')})，先强制清理`, 'gateway');
-            await this._forceKillPort(18789);
-            const freed = await this._waitForPortFree(18789, 5000);
+            await this._forceKillPort(gatewayPort);
+            const freed = await this._waitForPortFree(gatewayPort, 5000);
             if (!freed) {
                 this.log('error', '端口清理超时，无法启动 Gateway', 'gateway');
-                return { success: false, error: '端口 18789 被占用且无法释放' };
+                return { success: false, error: `端口 ${gatewayPort} 被占用且无法释放` };
             }
         }
 
-        const home = process.env.HOME || process.env.USERPROFILE;
-        const fs = require('fs');
-        const { execSync } = require('child_process');
-        let openclawPath = null;
-
-        // 方法1: npm root -g（最准确）
-        try {
-            const npmRoot = execSync('npm root -g', { encoding: 'utf8', windowsHide: true }).trim();
-            const p = path.join(npmRoot, 'openclaw', 'dist', 'index.js');
-            if (fs.existsSync(p)) openclawPath = p;
-        } catch (e) { /* fallback */ }
-
-        // 方法2: where/which openclaw（第二准确）
-        if (!openclawPath) {
-            try {
-                const cmd = process.platform === 'win32' ? 'where openclaw' : 'which openclaw';
-                const binPath = execSync(cmd, { encoding: 'utf8', windowsHide: true }).trim().split('\n')[0];
-                const binDir = path.dirname(binPath);
-                const candidates = [
-                    path.join(binDir, '..', 'node_modules', 'openclaw', 'dist', 'index.js'),
-                    path.join(binDir, '..', 'lib', 'node_modules', 'openclaw', 'dist', 'index.js'),
-                ];
-                for (const c of candidates) {
-                    if (fs.existsSync(path.normalize(c))) { openclawPath = path.normalize(c); break; }
-                }
-            } catch (e) { /* fallback */ }
-        }
-
-        // 方法3: 常见安装路径（兜底）
-        if (!openclawPath) {
-            const altPaths = [
-                path.join(home, '.npm-global', 'node_modules', 'openclaw', 'dist', 'index.js'),
-                path.join(home, 'AppData', 'Roaming', 'npm', 'node_modules', 'openclaw', 'dist', 'index.js'),
-                path.join('/usr/local/lib/node_modules/openclaw/dist/index.js'),
-                path.join('/usr/lib/node_modules/openclaw/dist/index.js'),
-                path.join(home, '.nvm/versions/node', process.version, 'lib/node_modules/openclaw/dist/index.js'),
-            ];
-            for (const alt of altPaths) {
-                if (fs.existsSync(alt)) { openclawPath = alt; break; }
-            }
-        }
+        const pathResolver = require('./utils/openclaw-path-resolver');
+        const openclawPath = pathResolver.findOpenClawPath();
 
         if (!openclawPath) {
-            this.log('error', 'openclaw 未找到！已检测以下位置均不存在。请确认已运行: npm install -g openclaw', 'gateway');
-            return { 
-                success: false, 
-                error: 'openclaw 未找到，请先安装: npm install -g openclaw' 
+            this.log('error', 'openclaw 未找到！请确认已安装: npm/pnpm install -g openclaw', 'gateway');
+            return {
+                success: false,
+                error: 'openclaw 未找到，请先安装: npm install -g openclaw 或 pnpm install -g openclaw'
             };
         }
 
-        const child = spawn('node', [openclawPath, 'gateway', '--port', '18789'], {
+        const child = spawn('node', [openclawPath, 'gateway', '--port', String(gatewayPort)], {
             stdio: ['ignore', 'pipe', 'pipe'], // 捕获 stdout + stderr 用于诊断
             shell: false,
             windowsHide: true
@@ -338,15 +327,16 @@ class ServiceManager extends EventEmitter {
     async stopGateway() {
         this.log('info', '正在停止 Gateway...', 'gateway');
         this._startupState = null; // 主动停止时清除启动状态
+        const gatewayPort = this._getGatewayPort();
 
-        await this._forceKillPort(18789);
+        await this._forceKillPort(gatewayPort);
 
         // 等待端口真正释放
-        const freed = await this._waitForPortFree(18789, 8000);
+        const freed = await this._waitForPortFree(gatewayPort, 8000);
         if (!freed) {
             this.log('error', '停止 Gateway 超时，端口仍被占用', 'gateway');
             // 最后一搏：再杀一次
-            await this._forceKillPort(18789);
+            await this._forceKillPort(gatewayPort);
             await new Promise(r => setTimeout(r, 2000));
         }
 
@@ -405,7 +395,7 @@ class ServiceManager extends EventEmitter {
 
         // 端口占用
         if (combined.includes('EADDRINUSE') || combined.includes('address already in use')) {
-            return '端口 18789 被占用';
+            return `端口 ${this._getGatewayPort()} 被占用`;
         }
 
         // 权限错误

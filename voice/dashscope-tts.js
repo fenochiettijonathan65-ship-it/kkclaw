@@ -59,7 +59,10 @@ class DashScopeTTS {
         const cmd = `python "${this.scriptPath}" "${safeText}" -o "${outputFile}" -v ${voice} -m ${this.model} -r ${this.speechRate} -k ${this.apiKey}`;
         
         try {
-            const { stdout, stderr } = await execAsync(cmd, { timeout: 30000 });
+            const { stdout, stderr } = await execAsync(cmd, {
+                timeout: 30000,
+                windowsHide: true
+            });
             
             const resultPath = stdout.trim();
             if (resultPath && fs.existsSync(resultPath)) {

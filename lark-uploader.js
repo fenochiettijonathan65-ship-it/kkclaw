@@ -16,8 +16,10 @@ class LarkUploader {
 
     loadConfig() {
         try {
-            const configPath = path.join(process.env.HOME || process.env.USERPROFILE, '.openclaw', 'openclaw.json');
-            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const pathResolver = require('./utils/openclaw-path-resolver');
+            const SafeConfigLoader = require('./utils/safe-config-loader');
+            const configPath = pathResolver.getConfigPath();
+            const config = SafeConfigLoader.load(configPath, {});
             const lark = config.channels?.lark || {};
             const feishu = config.channels?.feishu || {};
             return {

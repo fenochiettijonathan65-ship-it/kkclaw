@@ -1244,7 +1244,10 @@ let currentModelColor = '#E8A838';
 async function cycleModel() {
     if (!electronAPI) return;
     setMood('thinking');
-    const model = await electronAPI.invoke('model-next');
+    const raw = await electronAPI.invoke('model-next');
+    const model = (raw && typeof raw === 'object' && ('success' in raw || 'model' in raw || 'error' in raw))
+        ? (raw.success ? raw.model : null)
+        : raw;
     if (model) {
         updateModelBadge(model);
         // 球体闪变动画

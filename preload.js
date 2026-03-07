@@ -26,6 +26,16 @@ const VALID_INVOKE_CHANNELS = [
   'model-speed-test',
   'model-speed-test-all',
   'model-fetch-models',
+  'model-probe-provider',
+  'model-analyze-kkclaw',
+  'model-switch-state',
+  'model-switch-stats',
+  'model-set-strategy',
+  'model-switch-history',
+  'model-sync-cc-switch',
+  'model-detect-package',
+  'model-query-quota',
+  'model-sync-preset',
   'switch-log-list',
   'switch-log-clear',
   'diag-full-status',
@@ -34,7 +44,12 @@ const VALID_INVOKE_CHANNELS = [
   'diag-cleanup-cache',
   'diag-kill-port',
   'diag-doctor',
-  'refresh-session'
+  'refresh-session',
+  'gateway-health-score',
+  'gateway-metrics',
+  'gateway-anomalies',
+  'gateway-full-status',
+  'gateway-clear-metrics'
 ];
 
 const VALID_ON_CHANNELS = [

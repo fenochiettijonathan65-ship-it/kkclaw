@@ -2,7 +2,7 @@
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
-const ProgressReporter = require('./progress-reporter');
+const ProgressReporter = require('../utils/progress-reporter');
 
 // ClawdHub 热门技能列表 (基于下载量排序)
 const popularSkills = [

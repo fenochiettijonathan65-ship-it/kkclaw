@@ -1,32 +1,38 @@
 ﻿// OpenClaw 连接模块
 const path = require('path');
 const fs = require('fs');
+const pathResolver = require('./utils/openclaw-path-resolver');
+const configManager = require('./utils/config-manager');
+const LogSanitizer = require('./utils/log-sanitizer');
+const SecureStorage = require('./utils/secure-storage');
+const SessionLockManager = require('./utils/session-lock-manager');
 
-// 从 openclaw.json 读取端口，fallback 到默认 18789
+// 从配置读取端口
 function getOpenClawHost() {
     try {
-        const configPath = path.join(process.env.HOME || process.env.USERPROFILE, '.openclaw', 'openclaw.json');
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const config = configManager.getConfig();
         const port = config.gateway?.port || 18789;
         return `http://127.0.0.1:${port}`;
     } catch (e) {
         return 'http://127.0.0.1:18789';
     }
 }
-const OPENCLAW_HOST = getOpenClawHost();
 
-// 从 openclaw.json 自动读取 token
+// 从配置读取 token（支持加密存储）
 function getOpenClawToken() {
     if (process.env.OPENCLAW_GATEWAY_TOKEN) return process.env.OPENCLAW_GATEWAY_TOKEN;
     try {
-        const configPath = path.join(process.env.HOME || process.env.USERPROFILE, '.openclaw', 'openclaw.json');
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const configPath = pathResolver.getConfigPath();
+        const token = SecureStorage.getSecureToken(configPath);
+        if (token) return token;
+
+        // Fallback 到配置管理器
+        const config = configManager.getConfig();
         return config.gateway?.auth?.token || '';
     } catch (e) {
         return '';
     }
 }
-const OPENCLAW_TOKEN = getOpenClawToken();
 
 class OpenClawClient {
     constructor() {
@@ -44,6 +50,18 @@ class OpenClawClient {
         this.maxRequestHistory = 20; // 最多保留20条请求记录
     }
 
+    _isPluginSessionKey(sessionKey) {
+        return SessionLockManager.isPluginSessionKey(sessionKey);
+    }
+
+    _getHost() {
+        return getOpenClawHost();
+    }
+
+    _getToken() {
+        return getOpenClawToken();
+    }
+
     // 设置错误回调
     setErrorHandler(handler) {
         this.onError = handler;
@@ -57,30 +75,40 @@ class OpenClawClient {
         }
         this.lastCheckTime = now;
 
-        try {
+        const tryPing = async (timeoutMs = 8000) => {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const response = await fetch(`${this._getHost()}/`, {
+                    method: 'GET',
+                    signal: controller.signal
+                });
+                return Number.isInteger(response.status);
+            } catch {
+                return false;
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        };
 
-            const testResponse = await fetch(`${OPENCLAW_HOST}/`, {
-                method: 'GET',
-                signal: controller.signal
-            }).catch(() => null);
-
-            clearTimeout(timeoutId);
-
-            this.connected = testResponse !== null;
-            return this.connected;
-        } catch (err) {
-            this.connected = false;
-            return false;
+        // 两次探活：降低瞬时抖动导致的误报
+        const first = await tryPing(8000);
+        if (first) {
+            this.connected = true;
+            return true;
         }
+
+        await new Promise(resolve => setTimeout(resolve, 250));
+        const second = await tryPing(8000);
+        this.connected = second;
+        return second;
     }
 
     async sendMessage(message) {
         const requestId = ++this.requestCounter;
         const startTime = Date.now();
 
-        console.log(`[Req#${requestId}] 📤 发送消息: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
+        console.log(`[Req#${requestId}] 📤 发送消息: ${LogSanitizer.sanitizeMessage(message)}`);
 
         // 检查上下文长度
         const contextCheck = await this.checkContextLength(message);
@@ -95,10 +123,12 @@ class OpenClawClient {
         }, 30000);
 
         try {
-            const response = await fetch(`${OPENCLAW_HOST}/v1/chat/completions`, {
+            const gatewayHost = this._getHost();
+            const gatewayToken = this._getToken();
+            const response = await fetch(`${gatewayHost}/v1/chat/completions`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${OPENCLAW_TOKEN}`,
+                    'Authorization': `Bearer ${gatewayToken}`,
                     'Content-Type': 'application/json',
                     'x-openclaw-agent-id': 'main'
                 },
@@ -116,13 +146,26 @@ class OpenClawClient {
             clearTimeout(timeoutWarning); // 清除超时警告
 
             if (!response.ok) {
-                const errorMsg = `连接失败 (${response.status})`;
-                console.error(`[Req#${requestId}] ❌ ${errorMsg} (耗时: ${elapsed}ms)`);
+                const status = response.status;
+                const errorMsg = `请求失败 (${status})`;
+
+                // 4xx 大多是鉴权/路由/限流问题，不应直接判定 Gateway 挂掉
+                const isGatewayLikelyAlive = status >= 400 && status < 500;
+
+                if (isGatewayLikelyAlive) {
+                    console.warn(`[Req#${requestId}] ⚠️ ${errorMsg}，Gateway在线但API层异常 (耗时: ${elapsed}ms)`);
+                    this._recordError(requestId, `${errorMsg} [api-layer]`, elapsed, message);
+                    // 保持连接状态，避免误触发 guardian 重启链路
+                    this.connected = true;
+                    return errorMsg;
+                }
+
+                console.error(`[Req#${requestId}] ❌ ${errorMsg}，疑似Gateway不可用 (耗时: ${elapsed}ms)`);
 
                 // 记录错误
                 this._recordError(requestId, errorMsg, elapsed, message);
 
-                // 触发服务检测
+                // 仅在疑似网关不可用时触发服务检测
                 if (this.onError) {
                     this.onError(errorMsg);
                 }
@@ -171,11 +214,10 @@ class OpenClawClient {
             timestamp: new Date().toISOString(),
             error,
             elapsed,
-            message: message.substring(0, 100),
+            messageLength: message.length,
             type: error.includes('超时') ? 'timeout' : error.includes('连接') ? 'connection' : 'unknown'
         });
 
-        // 限制历史记录数量
         if (this.errorHistory.length > this.maxErrorHistory) {
             this.errorHistory = this.errorHistory.slice(0, this.maxErrorHistory);
         }
@@ -188,13 +230,12 @@ class OpenClawClient {
         this.requestHistory.unshift({
             requestId,
             timestamp: new Date().toISOString(),
-            message: message.substring(0, 100),
-            response: response ? response.substring(0, 100) : null,
+            messageLength: message.length,
+            responseLength: response ? response.length : 0,
             elapsed,
             success
         });
 
-        // 限制历史记录数量
         if (this.requestHistory.length > this.maxRequestHistory) {
             this.requestHistory = this.requestHistory.slice(0, this.maxRequestHistory);
         }
@@ -311,13 +352,14 @@ class OpenClawClient {
      */
     async getCurrentModelLimit() {
         try {
-            const configPath = path.join(process.env.HOME || process.env.USERPROFILE, '.openclaw', 'openclaw.json');
-            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            const primaryModel = config.agents?.defaults?.model?.primary;
+            const config = configManager.getConfig();
+            const defaultsModel = config.agents?.defaults?.model;
+            const primaryModel = typeof defaultsModel === 'string'
+                ? defaultsModel
+                : defaultsModel?.primary;
 
-            if (!primaryModel) return 200000; // 默认 200k
+            if (!primaryModel) return 200000;
 
-            // 从 providers 中查找模型配置
             const [providerName, modelId] = primaryModel.split('/');
             const provider = config.models?.providers?.[providerName];
             const model = provider?.models?.find(m => m.id === modelId);
@@ -334,43 +376,24 @@ class OpenClawClient {
      */
     async clearCurrentSession() {
         try {
-            const sessionDir = path.join(process.env.HOME || process.env.USERPROFILE, '.openclaw', 'agents', 'main', 'sessions');
-            const sessionFile = path.join(sessionDir, 'sessions.json');
-
-            if (!fs.existsSync(sessionFile)) {
-                console.log('📭 没有找到会话文件');
-                return { success: true, message: '没有活动会话' };
-            }
-
-            const sessionsData = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
-            let deletedCount = 0;
-
-            // 删除所有 lark 相关的 session
-            for (const [key, value] of Object.entries(sessionsData)) {
-                if (key.includes('lark:') && value.sessionId) {
-                    const sessionPath = path.join(sessionDir, `${value.sessionId}.jsonl`);
-                    const lockPath = sessionPath + '.lock';
-
-                    if (fs.existsSync(sessionPath)) {
-                        fs.unlinkSync(sessionPath);
-                        deletedCount++;
-                        console.log(`🗑️ 已删除会话: ${value.sessionId}`);
-                    }
-                    if (fs.existsSync(lockPath)) {
-                        fs.unlinkSync(lockPath);
-                    }
-                }
-            }
+            const result = SessionLockManager.cleanupPluginSessions({
+                agentId: 'main',
+                removeIndex: true,
+                force: false,
+                lockStaleMs: 120000
+            });
 
             // 重置 token 计数
             this.sessionTokenCount = 0;
             this.currentSessionId = null;
 
-            console.log(`✅ 已清理 ${deletedCount} 个会话`);
+            console.log(`✅ 已清理 ${result.deletedSessions} 个会话，移除 ${result.removedLocks} 个僵尸锁`);
             return {
                 success: true,
-                message: `已清理 ${deletedCount} 个会话`,
-                deletedCount
+                message: `已清理 ${result.deletedSessions} 个会话`,
+                deletedCount: result.deletedSessions,
+                removedLocks: result.removedLocks,
+                skippedLocked: result.skippedLocked
             };
         } catch (err) {
             console.error('清理会话失败:', err);
@@ -387,8 +410,8 @@ class OpenClawClient {
      */
     async getSessionInfo() {
         try {
-            const sessionDir = path.join(process.env.HOME || process.env.USERPROFILE, '.openclaw', 'agents', 'main', 'sessions');
-            const sessionFile = path.join(sessionDir, 'sessions.json');
+            const sessionDir = pathResolver.getSessionsDir('main');
+            const sessionFile = pathResolver.getSessionsFilePath('main');
 
             if (!fs.existsSync(sessionFile)) {
                 return {
@@ -398,11 +421,12 @@ class OpenClawClient {
                 };
             }
 
-            const sessionsData = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
+            const SafeConfigLoader = require('./utils/safe-config-loader');
+            const sessionsData = SafeConfigLoader.load(sessionFile, {});
             const sessions = [];
 
             for (const [key, value] of Object.entries(sessionsData)) {
-                if (key.includes('lark:') && value.sessionId) {
+                if (this._isPluginSessionKey(key) && value.sessionId) {
                     const sessionPath = path.join(sessionDir, `${value.sessionId}.jsonl`);
                     if (fs.existsSync(sessionPath)) {
                         const stats = fs.statSync(sessionPath);
