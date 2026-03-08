@@ -1518,6 +1518,37 @@ function reopenSetupWizard() {
   setupWizardWindow.on('closed', () => { setupWizardWindow = null; });
 }
 
+async function shouldForceStartupPreflight() {
+  if (process.platform !== 'win32') return { force: false, reason: '' };
+  if (!petConfig || !petConfig.get('setupComplete')) return { force: false, reason: '' };
+
+  if (!setupWizard) {
+    setupWizard = new SetupWizard(petConfig);
+  } else {
+    setupWizard.petConfig = petConfig;
+  }
+
+  try {
+    const env = await setupWizard._envCheck();
+    const coreOk = env.node.ok && env.openclaw.ok && env.gateway.ok;
+    if (coreOk) return { force: false, reason: '' };
+
+    const missing = [];
+    if (!env.node.ok) missing.push('Node.js 18+');
+    if (!env.openclaw.ok) missing.push('OpenClaw');
+    if (!env.gateway.ok) missing.push('Gateway');
+    return {
+      force: true,
+      reason: `Windows 启动预检未通过: ${missing.join('、')}`
+    };
+  } catch (err) {
+    return {
+      force: true,
+      reason: `Windows 启动预检失败: ${err.message}`
+    };
+  }
+}
+
 // 屏幕边界约束 — 防止球体跑到屏幕外
 function clampToScreen(x, y, winWidth = 200, winHeight = 260) {
   const displays = screen.getAllDisplays();
@@ -1865,6 +1896,14 @@ app.whenReady().then(async () => {
 
   // 🧙 首次运行自动弹出配置向导
   if (!petConfig.get('setupComplete')) {
+    reopenSetupWizard();
+    return;
+  }
+
+  const startupPreflight = await shouldForceStartupPreflight();
+  if (startupPreflight.force) {
+    console.warn(`⚠️ ${startupPreflight.reason}`);
+    showServiceNotification('EggClaw 首次启动需要补全环境', startupPreflight.reason);
     reopenSetupWizard();
   }
 });

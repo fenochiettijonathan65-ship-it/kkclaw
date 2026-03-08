@@ -1234,7 +1234,7 @@ async function renderEnvCheck() {
 
     <div class="check-item" id="env-node">
       <span class="check-icon">⏳</span>
-      <span class="check-name">Node.js 版本</span>
+      <span class="check-name">Node.js 18+（系统环境）</span>
       <span class="check-status">检测中...</span>
     </div>
 
@@ -1490,13 +1490,12 @@ function updateEnvSummary(r, gatewayJustStarted = false) {
     if (!gatewayOk) missing.push('Gateway 运行中');
     summary.innerHTML = `
       <strong>❌ 环境未就绪</strong> — 缺少: ${missing.join('、')}<br>
-      <span style="color:var(--text-medium);">请按照上方提示完成安装后，点击"重新检测"</span>
+      <span style="color:var(--text-medium);">Node.js、OpenClaw、Gateway 是首次启动的必需项。请先完成安装和启动，再继续。</span>
     `;
     actions.classList.remove('hidden');
     actions.innerHTML = `
       <div class="btn-row">
         <button class="btn btn-test" onclick="renderEnvCheck()">🔄 重新检测</button>
-        ${(r.node.ok && r.openclaw.ok) ? '<button class="btn btn-primary" onclick="goNext()">跳过，继续孵化 →</button>' : ''}
       </div>
     `;
   }

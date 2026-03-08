@@ -4,9 +4,10 @@ const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
 const http = require('http');
-const { exec } = require('child_process');
+const { exec, execFileSync } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
+const pathResolver = require('./utils/openclaw-path-resolver');
 
 class SetupWizard {
   constructor(petConfig) {
@@ -282,73 +283,36 @@ class SetupWizard {
 
   async _envCheck() {
     const results = {
-      node: { ok: false, version: '', error: '' },
+      node: { ok: false, version: '', path: '', error: '' },
       openclaw: { ok: false, version: '', path: '', error: '' },
       gateway: { ok: false, port: 18789, error: '' },
       python: { ok: false, version: '', command: '', error: '' },
     };
 
-    // 1. Node.js 版本
+    // 1. 系统 Node.js 版本（必须是真实可执行文件，不能用 Electron 内置 runtime 误判）
     try {
-      const nodeVer = process.version;
+      const nodeBinary = pathResolver.findNodeBinary();
+      if (!nodeBinary || !fs.existsSync(nodeBinary)) {
+        throw new Error('未检测到系统 Node.js，请先安装 Node.js 18+ 并确保已加入 PATH');
+      }
+      const nodeVer = execFileSync(nodeBinary, ['--version'], { encoding: 'utf8', windowsHide: true }).trim();
       const major = parseInt(nodeVer.replace('v', '').split('.')[0]);
       results.node.version = nodeVer;
+      results.node.path = nodeBinary;
       results.node.ok = major >= 18;
       if (!results.node.ok) {
         results.node.error = `需要 Node.js v18+，当前 ${nodeVer}`;
       }
     } catch (e) {
-      results.node.error = '无法检测 Node 版本';
+      results.node.error = e.message || '无法检测系统 Node 版本';
     }
 
     // 2. OpenClaw 安装 & 路径检测
-    try {
-      // 方法1: npm root -g
-      const { stdout: npmRoot } = await execAsync('npm root -g', { windowsHide: true, timeout: 5000 });
-      const p1 = path.join(npmRoot.trim(), 'openclaw', 'dist', 'index.js');
-      if (fs.existsSync(p1)) {
-        results.openclaw.ok = true;
-        results.openclaw.path = p1;
-      }
-    } catch (e) { /* fallback */ }
-
-    if (!results.openclaw.ok) {
-      try {
-        // 方法2: where/which
-        const cmd = process.platform === 'win32' ? 'where openclaw' : 'which openclaw';
-        const { stdout } = await execAsync(cmd, { windowsHide: true, timeout: 5000 });
-        const binPath = stdout.trim().split('\n')[0];
-        const binDir = path.dirname(binPath);
-        const candidates = [
-          path.join(binDir, '..', 'node_modules', 'openclaw', 'dist', 'index.js'),
-          path.join(binDir, '..', 'lib', 'node_modules', 'openclaw', 'dist', 'index.js'),
-        ];
-        for (const c of candidates) {
-          if (fs.existsSync(path.normalize(c))) {
-            results.openclaw.ok = true;
-            results.openclaw.path = path.normalize(c);
-            break;
-          }
-        }
-      } catch (e) { /* fallback */ }
-    }
-
-    if (!results.openclaw.ok) {
-      // 方法3: 常见路径
-      const home = this.homeDir;
-      const fallbacks = [
-        path.join(home, '.npm-global', 'node_modules', 'openclaw', 'dist', 'index.js'),
-        path.join(home, 'AppData', 'Roaming', 'npm', 'node_modules', 'openclaw', 'dist', 'index.js'),
-        '/usr/local/lib/node_modules/openclaw/dist/index.js',
-        '/usr/lib/node_modules/openclaw/dist/index.js',
-      ];
-      for (const p of fallbacks) {
-        if (fs.existsSync(p)) {
-          results.openclaw.ok = true;
-          results.openclaw.path = p;
-          break;
-        }
-      }
+    const openclawPath = pathResolver.findOpenClawPath();
+    const openclawBinary = pathResolver.findOpenClawBinary();
+    if (openclawPath && fs.existsSync(openclawPath)) {
+      results.openclaw.ok = true;
+      results.openclaw.path = openclawPath;
     }
 
     if (!results.openclaw.ok) {
@@ -358,8 +322,13 @@ class SetupWizard {
     // 获取 OpenClaw 版本
     if (results.openclaw.ok) {
       try {
-        const { stdout } = await execAsync('openclaw --version', { windowsHide: true, timeout: 5000 });
-        results.openclaw.version = stdout.trim();
+        if (openclawBinary && fs.existsSync(openclawBinary)) {
+          results.openclaw.version = execFileSync(openclawBinary, ['--version'], { encoding: 'utf8', windowsHide: true }).trim();
+        } else if (results.node.ok && results.node.path && openclawPath) {
+          results.openclaw.version = execFileSync(results.node.path, [openclawPath, '--version'], { encoding: 'utf8', windowsHide: true }).trim();
+        } else {
+          results.openclaw.version = '(版本未知)';
+        }
       } catch (e) {
         results.openclaw.version = '(版本未知)';
       }
