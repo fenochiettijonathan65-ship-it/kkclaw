@@ -20,7 +20,8 @@ if (process.env.ELECTRON_RUN_AS_NODE === '1') {
   }
 }
 
-const { app, BrowserWindow, ipcMain, screen, Menu, Tray, Notification, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Menu, Tray, Notification, shell, nativeImage } = require('electron');
+const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -45,6 +46,23 @@ const configManager = require('./utils/config-manager'); // 🔒 配置管理
 const SecureStorage = require('./utils/secure-storage'); // 🔒 安全存储
 const pathResolver = require('./utils/openclaw-path-resolver'); // 🔧 路径解析
 const SessionLockManager = require('./utils/session-lock-manager');
+const APP_NAME = 'EggClaw';
+const PET_NAME = '闪电⚡️';
+const SPEECH_AFTER_CAPTION_DELAY_MS = 650;
+const QUICK_SWITCH_MODEL_IDS = ['minimax/MiniMax-M2.5', 'claude-cli/opus-4.6'];
+const CHAT_TIMING_LOG = '/tmp/eggclaw-chat-timing.log';
+
+function logChatTiming(stage, data = {}) {
+  try {
+    const line = JSON.stringify({
+      at: new Date().toISOString(),
+      ts: Date.now(),
+      stage,
+      ...data
+    });
+    fs.appendFileSync(CHAT_TIMING_LOG, `${line}\n`);
+  } catch {}
+}
 
 // Windows透明窗口修复 — 禁用硬件加速彻底解决浅色背景矩形框
 app.disableHardwareAcceleration();
@@ -76,11 +94,42 @@ function buildGatewayDashboardUrl(port, token) {
   return `${baseUrl}#token=${encodeURIComponent(token)}`;
 }
 
+function syncLoginItemSettings(enabled) {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!enabled,
+      path: process.execPath
+    });
+    console.log(`🚀 开机自启${enabled ? '已开启' : '已关闭'}`);
+  } catch (err) {
+    console.error('设置开机自启失败:', err.message);
+  }
+}
+
+function createTrayIcon() {
+  const iconPath = path.join(__dirname, 'tray-icon.png');
+  const image = nativeImage.createFromPath(iconPath);
+  if (image.isEmpty()) return iconPath;
+
+  if (process.platform === 'darwin') {
+    return image.resize({ width: 18, height: 18 });
+  }
+
+  return image.resize({ width: 20, height: 20 });
+}
+
 function resolveDashboardUrlFromCli() {
   return new Promise((resolve, reject) => {
-    const child = process.platform === 'win32'
-      ? spawn('cmd.exe', ['/d', '/s', '/c', 'openclaw dashboard --no-open'], { windowsHide: true })
-      : spawn('openclaw', ['dashboard', '--no-open'], { windowsHide: true });
+    const openclawPath = pathResolver.findOpenClawPath();
+    const nodeBinary = pathResolver.findNodeBinary();
+    const openclawBinary = pathResolver.findOpenClawBinary();
+    const child = openclawPath
+      ? spawn(nodeBinary || 'node', [openclawPath, 'dashboard', '--no-open'], { windowsHide: true })
+      : openclawBinary
+        ? spawn(openclawBinary, ['dashboard', '--no-open'], { windowsHide: true })
+      : process.platform === 'win32'
+        ? spawn('cmd.exe', ['/d', '/s', '/c', 'openclaw dashboard --no-open'], { windowsHide: true })
+        : spawn('openclaw', ['dashboard', '--no-open'], { windowsHide: true });
 
     let output = '';
     child.stdout.on('data', (chunk) => {
@@ -169,6 +218,39 @@ let gatewayGuardian; // 🛡️ Gateway 进程守护
 let modelSwitcher; // 🔄 模型切换器
 let setupWizard; // 🧙 首次运行向导
 let setupWizardWindow; // 🧙 向导窗口
+let lastAgentSpeech = { text: '', at: 0 };
+let lastLocalAgentReply = { text: '', at: 0 };
+let lastLocalSendAt = 0;
+let activeChatSpeechTicket = 0;
+let nextLocalResponseId = 1;
+const pendingSpeechByResponseId = new Map();
+let localSpeechArmed = false;
+
+function speakAgentReplyOnce(text, emotion = 'calm') {
+  if (!voiceSystem || !text) return;
+  const normalized = String(text).trim();
+  const now = Date.now();
+  logChatTiming('speakAgentReplyOnce_called', { text: normalized.slice(0, 80), emotion });
+  if (normalized && lastAgentSpeech.text === normalized && now - lastAgentSpeech.at < 4000) {
+    console.log('🔇 跳过重复回复播报');
+    logChatTiming('speakAgentReplyOnce_skipped_duplicate', { text: normalized.slice(0, 80) });
+    return;
+  }
+  // 当前回复播报前，先清空所有旧的系统/排队语音，避免听到两次
+  voiceSystem.stop();
+  lastAgentSpeech = { text: normalized, at: now };
+  const ticket = Date.now();
+  activeChatSpeechTicket = ticket;
+  setTimeout(() => {
+    if (activeChatSpeechTicket !== ticket) {
+      console.log('🔇 过期回复播报票据，忽略');
+      logChatTiming('speakAgentReplyOnce_stale_ticket', { ticket });
+      return;
+    }
+    logChatTiming('speakAgentReplyOnce_exec_speak', { ticket, text: normalized.slice(0, 80) });
+    voiceSystem.speak(normalized.substring(0, 800), { emotion, source: 'chat-reply', ticket });
+  }, SPEECH_AFTER_CAPTION_DELAY_MS);
+}
 
 // 🛡️ 初始化全局错误处理 (最优先)
 errorHandler = new GlobalErrorHandler({
@@ -250,17 +332,44 @@ if (process.env.RESTARTED_BY === 'auto-restart') {
 
 async function createWindow() {
   const pkg = require('./package.json');
-  console.log(`🦞 KKClaw v${pkg.version} | PID ${process.pid} | ${__dirname}`);
+  console.log(`🥚 ${APP_NAME} v${pkg.version} | PID ${process.pid} | ${__dirname}`);
 
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   
   // 加载配置
   petConfig = new PetConfig();
   await petConfig.load();
+  syncLoginItemSettings(petConfig.get('autoLaunch'));
   
   // 初始化所有系统
   openclawClient = new OpenClawClient();
   voiceSystem = new SmartVoiceSystem(petConfig); // 🎙️ 智能语音系统
+  if (voiceSystem) {
+    const originalSpeak = voiceSystem.speak.bind(voiceSystem);
+    voiceSystem.speak = async (...args) => {
+      const options = args[1] || {};
+      if (petConfig.get('voiceEnabled') === false) {
+        console.log('🔇 主进程语音总开关已关闭，忽略播报请求');
+        return;
+      }
+      if (options.source !== 'chat-reply') {
+        console.log('🔇 非聊天回复播报已禁用');
+        return;
+      }
+      if (!localSpeechArmed) {
+        console.log('🔇 字幕未确认渲染，拦截聊天播报');
+        logChatTiming('voice_blocked_until_caption', { source: options.source, ticket: options.ticket || null });
+        return;
+      }
+      if (!options.ticket || options.ticket !== activeChatSpeechTicket) {
+        console.log('🔇 非当前回复票据播报已忽略');
+        return;
+      }
+      activeChatSpeechTicket = 0;
+      localSpeechArmed = false;
+      return originalSpeak(...args);
+    };
+  }
   workLogger = new WorkLogger();
   messageSync = new MessageSyncSystem(openclawClient);
   desktopNotifier = new DesktopNotifier(18788);
@@ -487,12 +596,7 @@ async function createWindow() {
         }).show();
       }
       
-      // 🔊 语音播报用户消息
-      if (payload.content && voiceSystem) {
-        const maxLength = 800; // 增加到800字,约2-3分钟
-        const voiceText = payload.content.substring(0, maxLength);
-        voiceSystem.speak(voiceText);
-      }
+      // 外部通知消息只更新界面，不参与桌宠本地播报，避免重复出声
     }
   });
   
@@ -501,6 +605,15 @@ async function createWindow() {
     if (mainWindow) {
       // 🧹 清理 TTS 停顿标记（<#0.3#> 等），只给 MiniMax 用，不显示
       const displayContent = (payload.content || '').replace(/<#[\d.]+#>/g, '');
+      const now = Date.now();
+      if (now - lastLocalSendAt < 12000) {
+        console.log('🔇 忽略本地提问窗口内的通知回复');
+        return;
+      }
+      if (displayContent && lastLocalAgentReply.text === displayContent && now - lastLocalAgentReply.at < 8000) {
+        console.log('🔇 忽略本地回复的通知回声');
+        return;
+      }
       
       mainWindow.webContents.send('agent-response', {
         content: displayContent,
@@ -508,19 +621,7 @@ async function createWindow() {
       });
       // 歌词窗口显示（等语音播完后消失）
       const estimatedDuration = Math.max(6000, displayContent.length * 180 + 2000);
-      sendLyric({
-        text: displayContent,
-        type: 'agent',
-        sender: '小K',
-        duration: estimatedDuration
-      });
-      // 直接在这里触发语音,完整播放
-      // ⚠️ 语音用原始内容（保留 <#0.3#> 停顿标记给 MiniMax）
-      if (payload.content && voiceSystem) {
-        const maxLength = 800;
-        const voiceText = payload.content.substring(0, maxLength);
-        voiceSystem.speak(voiceText, { emotion: payload.emotion || 'calm' });
-      }
+      // 外部 agent-response 只更新界面，不参与桌宠本地播报，避免重复出声
       workLogger.log('message', `我回复: ${displayContent}`);
     }
   });
@@ -541,18 +642,15 @@ async function createWindow() {
       workLogger.logMessage(msg.sender, msg.content);
       console.log('📩 新消息:', msg.sender, '-', msg.content.substring(0, 50));
       
-      // 🔥 添加语音播报用户消息
-      if (msg.content) {
-        voiceSystem.speak(msg.content.substring(0, 500)); // 用户消息也播报
-      }
+      // messageSync 只更新界面，不参与桌宠本地播报，避免重复出声
     }
   });
 
   mainWindow = new BrowserWindow({
-    width: 200,
-    height: 260,
-    x: petConfig.get('position')?.x || width - 200,
-    y: petConfig.get('position')?.y || height - 200,
+    width: 220,
+    height: 300,
+    x: petConfig.get('position')?.x || width - 220,
+    y: petConfig.get('position')?.y || height - 220,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -590,8 +688,8 @@ async function createWindow() {
   lyricsWindow = new BrowserWindow({
     width: 400,
     height: 100,
-    x: petPos[0] - 100,
-    y: petPos[1] - 110,
+    x: petPos[0] - 90,
+    y: petPos[1] - 120,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -681,7 +779,7 @@ async function createWindow() {
     },
     { type: 'separator' },
     {
-      label: '🔧 服务管理',
+      label: '🔧 孵化服务',
       submenu: [
         {
           label: '📊 服务状态',
@@ -926,24 +1024,24 @@ async function createWindow() {
       click: () => { openDiagnosticToolbox(); }
     },
     {
-      label: '🌐 打开控制台',
+      label: '🌐 打开孵化台',
       click: async () => {
         await openGatewayDashboard();
       }
     },
     {
-      label: '设置',
+      label: '蛋壳设置',
       click: () => {
         // TODO: 打开设置窗口
       }
     },
     {
-      label: '🧙 KKClaw 新手引导',
+      label: `🧙 ${APP_NAME} 孵化引导`,
       click: () => { reopenSetupWizard(); }
     },
     { type: 'separator' },
     {
-      label: '🔄 恢复 Session',
+      label: '🔄 恢复会话',
       click: async () => {
         showServiceNotification('正在恢复...', '清理飞书会话缓存');
         try {
@@ -964,7 +1062,7 @@ async function createWindow() {
   ]);
 
   // 创建系统托盘图标
-  tray = new Tray(path.join(__dirname, 'icon.png'));
+  tray = new Tray(createTrayIcon());
   tray.setToolTip('Claw - 你的数字助手');
   tray.setContextMenu(contextMenu);
   
@@ -1022,7 +1120,7 @@ function rebuildTrayMenu() {
     },
     { type: 'separator' },
     {
-      label: '🔧 服务管理',
+      label: '🔧 孵化服务',
       submenu: [
         {
           label: '📊 服务状态',
@@ -1261,22 +1359,22 @@ function rebuildTrayMenu() {
       click: () => { openDiagnosticToolbox(); }
     },
     {
-      label: '🌐 打开控制台',
+      label: '🌐 打开孵化台',
       click: async () => {
         await openGatewayDashboard();
       }
     },
     {
-      label: '设置',
+      label: '蛋壳设置',
       click: () => {}
     },
     {
-      label: '🧙 KKClaw 新手引导',
+      label: `🧙 ${APP_NAME} 孵化引导`,
       click: () => { reopenSetupWizard(); }
     },
     { type: 'separator' },
     {
-      label: '🔄 恢复 Session',
+      label: '🔄 恢复会话',
       click: async () => {
         showServiceNotification('正在恢复...', '清理飞书会话缓存');
         try {
@@ -1309,7 +1407,7 @@ function openModelSettings() {
   modelSettingsWindow = new BrowserWindow({
     width: 520,
     height: 640,
-    title: 'KKClaw Switch',
+    title: `${APP_NAME} 模型切换`,
     frame: false,
     resizable: true,
     minimizable: true,
@@ -1403,7 +1501,7 @@ function reopenSetupWizard() {
   setupWizardWindow = new BrowserWindow({
     width: 700,
     height: 550,
-    title: 'KKClaw 新手引导',
+    title: `${APP_NAME} 孵化引导`,
     resizable: false,
     minimizable: true,
     maximizable: false,
@@ -1455,6 +1553,25 @@ ipcMain.on('drag-pet', (event, { x, y, offsetX, offsetY }) => {
   petConfig.set('position', { x: newX, y: newY });
 });
 
+ipcMain.on('agent-response-displayed', (event, responseId) => {
+  logChatTiming('agent_response_displayed_ack', { responseId });
+  const pending = pendingSpeechByResponseId.get(responseId);
+  if (!pending) return;
+
+  pendingSpeechByResponseId.delete(responseId);
+  if (!voiceSystem || !pending.text) return;
+  localSpeechArmed = true;
+
+  setTimeout(() => {
+    logChatTiming('agent_response_displayed_ack_speaking', { responseId, text: pending.text.slice(0, 80) });
+    speakAgentReplyOnce(pending.text, pending.emotion || 'calm');
+  }, 120);
+});
+
+ipcMain.on('chat-timing', (event, payload = {}) => {
+  logChatTiming('renderer', payload);
+});
+
 // 三击查看历史消息
 ipcMain.handle('show-history', async () => {
   try {
@@ -1483,22 +1600,88 @@ ipcMain.handle('show-history', async () => {
 let openclawSendQueue = Promise.resolve();
 ipcMain.handle('openclaw-send', async (event, message) => {
   const run = async () => {
+    logChatTiming('openclaw_send_start', { message: String(message).slice(0, 80) });
+    localSpeechArmed = false;
+    activeChatSpeechTicket = 0;
+    if (voiceSystem) {
+      voiceSystem.stop();
+    }
+    lastLocalSendAt = Date.now();
     workLogger.logMessage('用户', message);
     workLogger.logTask(`处理消息: ${message}`);
 
+    const maybeRecoverGateway = async (reason) => {
+      if (!serviceManager) return false;
+      try {
+        const status = serviceManager.getStatus?.();
+        const gatewayStatus = status?.gateway?.status;
+        if (gatewayStatus === 'running') {
+          workLogger.log('warn', `检测到网关瞬时异常（${reason}），等待已运行网关恢复`);
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          return true;
+        }
+
+        workLogger.log('warn', `检测到网关异常（${reason}），准备启动网关`);
+        await serviceManager.startGateway();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return true;
+      } catch (err) {
+        workLogger.logError(`网关自动重启失败: ${err.message}`);
+        return false;
+      }
+    };
+
+    const isRetryableFailure = (text) => {
+      if (!text || typeof text !== 'string') return false;
+      return text.startsWith('错误: fetch failed')
+        || text.startsWith('连接失败')
+        || text.startsWith('请求失败 (404)')
+        || text.startsWith('请求失败 (502)')
+        || text.startsWith('请求失败 (503)');
+    };
+
+    const connectedBeforeSend = await openclawClient.checkConnection();
+    if (!connectedBeforeSend) {
+      await maybeRecoverGateway('发送前探活失败');
+    }
+
     let response = await openclawClient.sendMessage(message);
+    logChatTiming('openclaw_send_first_response', { response: String(response || '').slice(0, 120) });
 
     // 兼容上游偶发流事件乱序：Unexpected event order
     if (typeof response === 'string' && response.includes('Unexpected event order')) {
       workLogger.log('warn', '检测到流事件乱序，正在自动重试一次');
       await new Promise(resolve => setTimeout(resolve, 600));
       response = await openclawClient.sendMessage(message);
+      logChatTiming('openclaw_send_retry_unexpected_order', { response: String(response || '').slice(0, 120) });
+    } else if (isRetryableFailure(response)) {
+      const recovered = await maybeRecoverGateway(response);
+      if (recovered) {
+        workLogger.log('warn', '已完成网关自愈重启，正在自动重试一次');
+        response = await openclawClient.sendMessage(message);
+        logChatTiming('openclaw_send_retry_recovered', { response: String(response || '').slice(0, 120) });
+      }
     }
 
     if (response && !response.startsWith('请求失败') && !response.startsWith('连接失败') && !response.startsWith('错误')) {
       workLogger.logSuccess('消息发送成功');
       workLogger.log('message', `AI回复: ${response.substring(0, 100)}`);
+      lastLocalAgentReply = { text: response, at: Date.now() };
+      const responseId = nextLocalResponseId++;
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        logChatTiming('main_send_agent_response', { responseId, response: response.slice(0, 120) });
+        mainWindow.webContents.send('agent-response', {
+          content: response,
+          emotion: 'calm',
+          responseId
+        });
+      }
+
+      pendingSpeechByResponseId.delete(responseId);
+      localSpeechArmed = false;
     } else {
+      logChatTiming('openclaw_send_error_response', { response: String(response || '').slice(0, 120) });
       workLogger.logError(response || '发送失败');
     }
 
@@ -1517,12 +1700,70 @@ ipcMain.handle('openclaw-status', async () => {
   return { connected, status };
 });
 
+ipcMain.handle('egg-growth-metrics', async () => {
+  const connected = await openclawClient.checkConnection();
+  const diagnostics = await openclawClient.getDiagnostics();
+  const uptimeMs = serviceManager ? serviceManager.getUptime('gateway') : 0;
+  const sessionLog = workLogger ? workLogger.getSessionLog() : [];
+  const workCount = sessionLog.filter((entry) => ['task', 'success', 'message'].includes(entry.type)).length;
+
+  const readReadySkills = () => new Promise((resolve) => {
+    try {
+      const pathResolver = require('./utils/openclaw-path-resolver');
+      const openclawPath = pathResolver.findOpenClawPath();
+      const nodeBinary = pathResolver.findNodeBinary();
+      if (!openclawPath) {
+        resolve(0);
+        return;
+      }
+      execFile(nodeBinary || 'node', [openclawPath, 'skills', 'list', '--json'], { windowsHide: true, timeout: 8000 }, (err, stdout) => {
+        if (err || !stdout) {
+          resolve(0);
+          return;
+        }
+        try {
+          const parsed = JSON.parse(stdout);
+          const ready = Array.isArray(parsed)
+            ? parsed.filter((item) => item.status === 'ready' || item.ready === true).length
+            : 0;
+          resolve(ready);
+        } catch {
+          resolve(0);
+        }
+      });
+    } catch {
+      resolve(0);
+    }
+  });
+
+  const readySkills = await readReadySkills();
+
+  return {
+    connected,
+    uptimeMs,
+    readySkills,
+    workCount,
+    requestsTotal: diagnostics?.requests?.total || 0,
+    estimatedTokens: diagnostics?.session?.estimatedTokens || 0,
+    activeSessions: diagnostics?.session?.activeSessions || 0,
+    contextPercentage: diagnostics?.session?.contextPercentage || 0
+  };
+});
+
 // 🎙️ 语音控制
 ipcMain.handle('set-voice-enabled', async (event, enabled) => {
   voiceSystem.toggle(enabled);
   petConfig.set('voiceEnabled', enabled);
   console.log(`🔊 语音${enabled ? '开启' : '关闭'}`);
   return true;
+});
+
+ipcMain.handle('get-voice-enabled', async () => {
+  if (voiceSystem) {
+    return !!voiceSystem.getStats().enabled;
+  }
+  const configured = petConfig ? petConfig.get('voiceEnabled') : true;
+  return configured !== false;
 });
 
 // 🔍 TTS 依赖检测
@@ -1680,7 +1921,13 @@ ipcMain.handle('model-switch-provider', async (event, providerName) => {
 
 ipcMain.handle('model-next', async () => {
   if (!modelSwitcher) return { success: false, error: 'not initialized', model: null };
-  const model = await modelSwitcher.next();
+
+  const current = modelSwitcher.getCurrent ? modelSwitcher.getCurrent() : null;
+  const currentId = current?.id || '';
+  const currentIndex = QUICK_SWITCH_MODEL_IDS.indexOf(currentId);
+  const nextModelId = QUICK_SWITCH_MODEL_IDS[(currentIndex + 1 + QUICK_SWITCH_MODEL_IDS.length) % QUICK_SWITCH_MODEL_IDS.length];
+
+  const model = await modelSwitcher.switchTo(nextModelId);
   const result = modelSwitcher.getLastSwitchResult ? modelSwitcher.getLastSwitchResult() : null;
   if (result) return result;
   return {

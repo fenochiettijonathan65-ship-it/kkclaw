@@ -25,9 +25,11 @@ const VALID_INVOKE_CHANNELS = [
   'wizard-env-check',
   'wizard-install-openclaw',
   'wizard-start-gateway',
+  'wizard-save-voice-id',
   'check-tts',
   'install-edge-tts',
   'install-dashscope',
+  'open-external',
 ];
 
 const VALID_ON_CHANNELS = [
@@ -36,6 +38,14 @@ const VALID_ON_CHANNELS = [
 
 contextBridge.exposeInMainWorld('wizardAPI', {
   invoke: (channel, ...args) => {
+    if (channel === 'open-external') {
+      const [url] = args;
+      if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+        shell.openExternal(url);
+        return Promise.resolve({ ok: true });
+      }
+      return Promise.reject(new Error('Invalid URL'));
+    }
     if (VALID_INVOKE_CHANNELS.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);
     }

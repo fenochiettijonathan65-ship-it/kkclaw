@@ -1,5 +1,6 @@
 // 🎙️ 智能语音播报系统 - 增强版（支持 MiniMax Speech / DashScope CosyVoice）
 const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
 const path = require('path');
@@ -12,12 +13,14 @@ class SmartVoiceSystem {
         this.petConfig = petConfig || null;
         this.isSpeaking = false;
         this.tempDir = path.join(__dirname, 'temp');
-        this.voice = 'zh-CN-XiaoxiaoNeural';  // Edge TTS 默认晓晓
+        this.voice = 'zh-CN-YunxiNeural';  // Edge TTS 默认云希（偏软男声）
         this.enabled = true;
         this.queue = [];
         this.maxQueueSize = 10;
         this.lastSpoken = '';
         this.lastSpokenTime = 0;
+        this.currentAudioProcess = null;
+        this.playbackGeneration = 0;
         
         // 🎭 情境模式
         this.contextMode = 'normal';  // normal, excited, calm, urgent
@@ -45,6 +48,11 @@ class SmartVoiceSystem {
             totalQueued: 0,
             avgDuration: 0
         };
+
+        const configuredEnabled = this.petConfig ? this.petConfig.get('voiceEnabled') : undefined;
+        if (typeof configuredEnabled === 'boolean') {
+            this.enabled = configuredEnabled;
+        }
         
         this.initTempDir();
     }
@@ -94,16 +102,38 @@ class SmartVoiceSystem {
      * 🔊 跨平台音频播放
      */
     async _playAudioFile(filePath) {
-        let cmd;
-        if (process.platform === 'darwin') {
-            cmd = `afplay "${filePath}"`;
-        } else if (process.platform === 'linux') {
-            cmd = `aplay "${filePath}" 2>/dev/null || paplay "${filePath}"`;
-        } else {
-            const safePath = filePath.replace(/'/g, "''");
-            cmd = `powershell -c "Add-Type -AssemblyName presentationCore; $player = New-Object System.Windows.Media.MediaPlayer; $player.Open('${safePath}'); $player.Play(); while($player.NaturalDuration.HasTimeSpan -eq $false) { Start-Sleep -Milliseconds 100 }; $duration = $player.NaturalDuration.TimeSpan.TotalSeconds; Start-Sleep -Seconds $duration; $player.Close()"`;
-        }
-        await execAsync(cmd, { timeout: 120000, windowsHide: true });
+        await new Promise((resolve, reject) => {
+            let child;
+
+            if (process.platform === 'darwin') {
+                child = spawn('afplay', [filePath], { windowsHide: true });
+            } else if (process.platform === 'linux') {
+                child = spawn('sh', ['-c', `aplay "${filePath}" 2>/dev/null || paplay "${filePath}"`], { windowsHide: true });
+            } else {
+                const safePath = filePath.replace(/'/g, "''");
+                child = spawn('powershell', ['-c', `Add-Type -AssemblyName presentationCore; $player = New-Object System.Windows.Media.MediaPlayer; $player.Open('${safePath}'); $player.Play(); while($player.NaturalDuration.HasTimeSpan -eq $false) { Start-Sleep -Milliseconds 100 }; $duration = $player.NaturalDuration.TimeSpan.TotalSeconds; Start-Sleep -Seconds $duration; $player.Close()`], { windowsHide: true });
+            }
+
+            this.currentAudioProcess = child;
+
+            child.on('error', (err) => {
+                if (this.currentAudioProcess === child) this.currentAudioProcess = null;
+                reject(err);
+            });
+
+            child.on('exit', (code, signal) => {
+                if (this.currentAudioProcess === child) this.currentAudioProcess = null;
+                if (!this.enabled && signal) {
+                    resolve();
+                    return;
+                }
+                if (code === 0 || code === null) {
+                    resolve();
+                    return;
+                }
+                reject(new Error(`audio player exited with code ${code}`));
+            });
+        });
     }
 
     /**
@@ -225,7 +255,7 @@ class SmartVoiceSystem {
             return;
         }
 
-        await this.speakNow(text, voiceConfig, analysis);
+        await this.speakNow(text, voiceConfig, analysis, this.playbackGeneration);
         await this.processQueue();
     }
 
@@ -386,8 +416,8 @@ class SmartVoiceSystem {
     selectVoice(analysis) {
         let config = {
             voice: this.voice,
-            rate: '+0%',    // 语速
-            pitch: '+0Hz'   // 音调
+            rate: '+4%',    // 语速略快一点
+            pitch: '+6Hz'   // 音调轻抬，保留男声底色
         };
         
         // 根据情境调整语音特性
@@ -395,35 +425,35 @@ class SmartVoiceSystem {
             case 'excited':
             case 'happy':
                 config.rate = '+10%';   // 稍快
-                config.pitch = '+30Hz'; // 开心
+                config.pitch = '+18Hz'; // 开心但不偏女声
                 break;
             case 'surprised':
                 config.rate = '+15%';   // 更快
-                config.pitch = '+40Hz'; // 惊讶语调高
+                config.pitch = '+22Hz'; // 惊讶但仍保留男声质感
                 break;
             case 'urgent':
             case 'fearful':
                 config.rate = '+10%';
-                config.voice = 'zh-CN-YunxiNeural';  // 换男声，更有力
+                config.voice = 'zh-CN-YunxiNeural';  // 维持偏软男声
                 break;
             case 'sad':
-                config.rate = '-5%';    // 稍慢
-                config.pitch = '-10Hz'; // 低沉一点
+                config.rate = '-3%';    // 稍慢
+                config.pitch = '+2Hz';  // 不压得太沉
                 break;
             case 'thinking':
-                config.rate = '-5%';    // 思考时慢一点
-                config.pitch = '+10Hz';
+                config.rate = '-2%';    // 思考时略慢
+                config.pitch = '+6Hz';
                 break;
             case 'calm':
-                config.rate = '-5%';    // 平静舒缓
-                config.pitch = '+15Hz';
+                config.rate = '-2%';    // 平静舒缓
+                config.pitch = '+6Hz';
                 break;
             case 'angry':
                 config.rate = '+5%';
-                config.pitch = '+20Hz';
+                config.pitch = '+10Hz';
                 break;
             default:
-                config.pitch = '+15Hz';
+                config.pitch = '+6Hz';
                 break;
         }
         
@@ -433,7 +463,7 @@ class SmartVoiceSystem {
     /**
      * 🔊 立即播报
      */
-    async speakNow(text, voiceConfig, analysis) {
+    async speakNow(text, voiceConfig, analysis, generation = this.playbackGeneration) {
         this.isSpeaking = true;
         const startTime = Date.now();
         
@@ -464,6 +494,12 @@ class SmartVoiceSystem {
             }[analysis.category] || '🔊';
             
             console.log(`${categoryIcon} 播报: ${cleanText.substring(0, 40)}${cleanText.length > 40 ? '...' : ''}`);
+
+            const ensurePlaybackAllowed = () => {
+                if (!this.enabled || generation !== this.playbackGeneration) {
+                    throw new Error('voice playback cancelled');
+                }
+            };
             
             // 🎙️ 根据引擎选择 TTS 方式
             if (this.ttsEngine === 'minimax' && this.minimax) {
@@ -479,7 +515,7 @@ class SmartVoiceSystem {
                         emotion: emotion,
                         outputFile: outputFile
                     });
-                    
+                    ensurePlaybackAllowed();
                     await this._playAudioFile(audioFile);
                     
                 } catch (minimaxErr) {
@@ -493,14 +529,17 @@ class SmartVoiceSystem {
                                 voice: this.dashscopeVoice,
                                 outputFile: outputFile
                             });
+                            ensurePlaybackAllowed();
                             await this._playAudioFile(audioFile);
                         } catch (dashErr) {
                             console.error('[Voice] ❌ DashScope 也失败，回退到 Edge TTS:', dashErr.message);
                             // 🚨 发送二级降级通知
                             this.notifyDegradation('dashscope', 'edge', dashErr.message);
+                            ensurePlaybackAllowed();
                             await this.speakWithEdgeTTS(cleanText, voiceConfig, outputFile);
                         }
                     } else {
+                        ensurePlaybackAllowed();
                         await this.speakWithEdgeTTS(cleanText, voiceConfig, outputFile);
                     }
                 }
@@ -511,7 +550,7 @@ class SmartVoiceSystem {
                         voice: this.dashscopeVoice,
                         outputFile: outputFile
                     });
-                    
+                    ensurePlaybackAllowed();
                     await this._playAudioFile(audioFile);
 
                 } catch (dashErr) {
@@ -519,10 +558,12 @@ class SmartVoiceSystem {
                     // 🚨 发送降级通知
                     this.notifyDegradation('dashscope', 'edge', dashErr.message);
                     // 回退到 Edge TTS
+                    ensurePlaybackAllowed();
                     await this.speakWithEdgeTTS(cleanText, voiceConfig, outputFile);
                 }
             } else {
                 // Edge TTS (回退方案)
+                ensurePlaybackAllowed();
                 await this.speakWithEdgeTTS(cleanText, voiceConfig, outputFile);
             }
             
@@ -544,12 +585,13 @@ class SmartVoiceSystem {
     }
 
     async processQueue() {
+        if (!this.enabled) return;
         if (this.queue.length > 0 && !this.isSpeaking) {
             const next = this.queue.shift();
             console.log(`🔊 队列播报 (剩余: ${this.queue.length})`);
-            await this.speakNow(next.text, next.voiceConfig, next.analysis);
+            await this.speakNow(next.text, next.voiceConfig, next.analysis, this.playbackGeneration);
             // 继续处理队列
-            if (this.queue.length > 0) {
+            if (this.queue.length > 0 && this.enabled) {
                 setTimeout(() => this.processQueue(), 500);
             }
         }
@@ -622,7 +664,11 @@ class SmartVoiceSystem {
      * 🔇 开关语音
      */
     toggle(enabled) {
+        this.playbackGeneration += 1;
         this.enabled = enabled;
+        if (!enabled) {
+            this.stop();
+        }
         console.log(`🔊 语音${enabled ? '开启' : '关闭'}`);
     }
 
@@ -633,6 +679,14 @@ class SmartVoiceSystem {
     stop() {
         this.clearQueue();
         this.isSpeaking = false;
+        if (this.currentAudioProcess) {
+            try {
+                this.currentAudioProcess.kill('SIGTERM');
+            } catch {
+                // ignore
+            }
+            this.currentAudioProcess = null;
+        }
     }
 
     /**

@@ -1,6 +1,7 @@
 ﻿// OpenClaw 连接模块
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
 const pathResolver = require('./utils/openclaw-path-resolver');
 const configManager = require('./utils/config-manager');
 const LogSanitizer = require('./utils/log-sanitizer');
@@ -60,6 +61,110 @@ class OpenClawClient {
 
     _getToken() {
         return getOpenClawToken();
+    }
+
+    _getCliInvocation() {
+        const openclawPath = pathResolver.findOpenClawPath();
+        if (openclawPath) {
+            const nodeBinary = pathResolver.findNodeBinary();
+            return {
+                command: nodeBinary || 'node',
+                argsPrefix: [openclawPath]
+            };
+        }
+
+        const openclawBinary = pathResolver.findOpenClawBinary();
+        if (openclawBinary) {
+            return {
+                command: openclawBinary,
+                argsPrefix: []
+            };
+        }
+
+        return {
+            command: 'openclaw',
+            argsPrefix: []
+        };
+    }
+
+    _extractFriendlyError(raw) {
+        const text = typeof raw === 'string' ? raw.trim() : '';
+        if (!text) return '请求失败，请稍后再试';
+
+        const limitMatch = text.match(/You've hit your limit.*?resets\s+([^\n"}]+)/i);
+        if (limitMatch) {
+            return `Claude 使用额度已用完，${limitMatch[1].trim()} 后再试`;
+        }
+
+        if (text.includes('duplicate plugin id detected')) {
+            const lines = text.split('\n').filter(Boolean).filter((line) => !line.includes('duplicate plugin id detected') && !line.startsWith('Config warnings:'));
+            if (lines.length) {
+                return this._extractFriendlyError(lines.join('\n'));
+            }
+        }
+
+        const failoverJsonMatch = text.match(/FailoverError:\s*(\{.*\})/s);
+        if (failoverJsonMatch) {
+            try {
+                const payload = JSON.parse(failoverJsonMatch[1]);
+                if (typeof payload?.result === 'string' && payload.result.trim()) {
+                    return this._extractFriendlyError(payload.result.trim());
+                }
+            } catch {}
+        }
+
+        if (text.includes('gateway closed')) {
+            return 'OpenClaw 网关连接中断，请稍后重试';
+        }
+
+        if (text.includes('EPERM') && text.includes('sessions.json.lock')) {
+            return 'OpenClaw 会话锁文件不可写，请检查本地权限';
+        }
+
+        if (text.includes('Unexpected event order')) {
+            return 'OpenClaw 会话流异常，正在恢复，请再试一次';
+        }
+
+        return text.split('\n').find(Boolean) || '请求失败，请稍后再试';
+    }
+
+    _extractAgentReply(raw) {
+        const text = typeof raw === 'string' ? raw.trim() : '';
+        if (!text) return '';
+
+        const candidates = [];
+        try {
+            candidates.push(JSON.parse(text));
+        } catch {
+            const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+            for (let i = lines.length - 1; i >= 0; i -= 1) {
+                try {
+                    candidates.push(JSON.parse(lines[i]));
+                    break;
+                } catch {
+                    // ignore non-JSON lines
+                }
+            }
+        }
+
+        for (const payload of candidates) {
+            const extracted = payload?.reply
+                || payload?.content
+                || payload?.message
+                || payload?.output_text
+                || payload?.text
+                || payload?.result?.payloads?.[0]?.text
+                || payload?.result?.reply
+                || payload?.result?.content
+                || payload?.response?.reply
+                || payload?.response?.content
+                || payload?.assistant?.content;
+            if (typeof extracted === 'string' && extracted.trim()) {
+                return extracted.trim();
+            }
+        }
+
+        return text;
     }
 
     // 设置错误回调
@@ -123,59 +228,54 @@ class OpenClawClient {
         }, 30000);
 
         try {
-            const gatewayHost = this._getHost();
-            const gatewayToken = this._getToken();
-            const response = await fetch(`${gatewayHost}/v1/chat/completions`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${gatewayToken}`,
-                    'Content-Type': 'application/json',
-                    'x-openclaw-agent-id': 'main'
-                },
-                body: JSON.stringify({
-                    model: 'openclaw:main',
-                    messages: [
-                        { role: 'user', content: message }
-                    ],
-                    stream: false
-                })
+            const { command, argsPrefix } = this._getCliInvocation();
+            const args = [
+                ...argsPrefix,
+                'agent',
+                '--agent', 'main',
+                '--message', message,
+                '--json',
+                '--thinking', 'off',
+                '--timeout', '45'
+            ];
+
+            const { stdout, stderr } = await new Promise((resolve, reject) => {
+                execFile(
+                    command,
+                    args,
+                    {
+                        windowsHide: true,
+                        timeout: 60000,
+                        maxBuffer: 1024 * 1024 * 4,
+                        env: process.env
+                    },
+                    (err, stdout, stderr) => {
+                        if (err) {
+                            err.stdout = stdout;
+                            err.stderr = stderr;
+                            reject(err);
+                            return;
+                        }
+                        resolve({ stdout, stderr });
+                    }
+                );
             });
 
             const elapsed = Date.now() - startTime;
 
             clearTimeout(timeoutWarning); // 清除超时警告
 
-            if (!response.ok) {
-                const status = response.status;
-                const errorMsg = `请求失败 (${status})`;
-
-                // 4xx 大多是鉴权/路由/限流问题，不应直接判定 Gateway 挂掉
-                const isGatewayLikelyAlive = status >= 400 && status < 500;
-
-                if (isGatewayLikelyAlive) {
-                    console.warn(`[Req#${requestId}] ⚠️ ${errorMsg}，Gateway在线但API层异常 (耗时: ${elapsed}ms)`);
-                    this._recordError(requestId, `${errorMsg} [api-layer]`, elapsed, message);
-                    // 保持连接状态，避免误触发 guardian 重启链路
-                    this.connected = true;
-                    return errorMsg;
-                }
-
-                console.error(`[Req#${requestId}] ❌ ${errorMsg}，疑似Gateway不可用 (耗时: ${elapsed}ms)`);
-
-                // 记录错误
+            const content = this._extractAgentReply(stdout);
+            if (!content) {
+                const stderrText = (stderr || '').trim();
+                const errorMsg = stderrText ? this._extractFriendlyError(stderrText) : '请求失败: 无可解析回复';
                 this._recordError(requestId, errorMsg, elapsed, message);
-
-                // 仅在疑似网关不可用时触发服务检测
+                this.connected = false;
                 if (this.onError) {
                     this.onError(errorMsg);
                 }
-                this.connected = false;
                 return errorMsg;
             }
-
-            this.connected = true;
-            const data = await response.json();
-            const content = data.choices?.[0]?.message?.content || '无响应';
 
             // 更新 token 计数（粗略估算：中文1字≈2token，英文1词≈1.3token）
             this.sessionTokenCount += this.estimateTokens(message) + this.estimateTokens(content);
@@ -191,17 +291,20 @@ class OpenClawClient {
         } catch (err) {
             clearTimeout(timeoutWarning); // 清除超时警告
             const elapsed = Date.now() - startTime;
-            console.error(`[Req#${requestId}] ❌ 发送消息失败 (耗时: ${elapsed}ms):`, err.message);
+            const stderrText = typeof err.stderr === 'string' ? err.stderr.trim() : '';
+            const stdoutText = typeof err.stdout === 'string' ? err.stdout.trim() : '';
+            const detail = stderrText || stdoutText || err.message;
+            console.error(`[Req#${requestId}] ❌ 发送消息失败 (耗时: ${elapsed}ms):`, detail);
 
             // 记录错误
-            this._recordError(requestId, err.message, elapsed, message);
+            this._recordError(requestId, detail, elapsed, message);
 
             this.connected = false;
             // 触发服务检测
             if (this.onError) {
-                this.onError(err.message);
+                this.onError(detail);
             }
-            return `错误: ${err.message}`;
+            return this._extractFriendlyError(detail);
         }
     }
 

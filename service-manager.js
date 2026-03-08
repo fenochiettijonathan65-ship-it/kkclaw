@@ -247,6 +247,7 @@ class ServiceManager extends EventEmitter {
 
         const pathResolver = require('./utils/openclaw-path-resolver');
         const openclawPath = pathResolver.findOpenClawPath();
+        const nodeBinary = pathResolver.findNodeBinary();
 
         if (!openclawPath) {
             this.log('error', 'openclaw 未找到！请确认已安装: npm/pnpm install -g openclaw', 'gateway');
@@ -256,7 +257,7 @@ class ServiceManager extends EventEmitter {
             };
         }
 
-        const child = spawn('node', [openclawPath, 'gateway', '--port', String(gatewayPort)], {
+        const child = spawn(nodeBinary || 'node', [openclawPath, 'gateway', '--port', String(gatewayPort)], {
             stdio: ['ignore', 'pipe', 'pipe'], // 捕获 stdout + stderr 用于诊断
             shell: false,
             windowsHide: true

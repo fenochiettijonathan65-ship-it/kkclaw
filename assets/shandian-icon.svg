@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0c1835"/>
+      <stop offset="100%" stop-color="#3f8fe6"/>
+    </linearGradient>
+    <linearGradient id="egg" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0%" stop-color="#fff1d4"/>
+      <stop offset="55%" stop-color="#f8b8cf"/>
+      <stop offset="100%" stop-color="#96cfff"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff7c8"/>
+      <stop offset="100%" stop-color="#ffd34f"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="40" y="40" width="944" height="944" rx="220" fill="url(#bg)"/>
+  <ellipse cx="512" cy="836" rx="148" ry="24" fill="#163c75" opacity="0.28"/>
+
+  <path d="M512 226C389 226 304 348 304 524c0 166 78 282 208 282s208-116 208-282c0-176-85-298-208-298Z" fill="url(#egg)"/>
+  <path d="M512 242C397 242 320 357 320 524c0 154 70 266 192 266s192-112 192-266c0-167-77-282-192-282Z" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="10"/>
+
+  <ellipse cx="420" cy="438" rx="30" ry="66" fill="#ffffff" opacity="0.88" transform="rotate(-18 420 438)"/>
+
+  <path d="M560 338c6 0 10 6 7 12l-42 92h68c8 0 12 9 7 15L484 634c-6 9-19 3-16-7l39-104h-58c-8 0-12-8-7-15l102-162c3-5 8-8 16-8Z" fill="url(#bolt)"/>
+</svg>

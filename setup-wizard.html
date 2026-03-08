@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>KKClaw 新手引导</title>
+<title>EggClaw 孵化引导</title>
 <style>
   :root {
     --wood-dark: #5a3a1a;
@@ -494,7 +494,7 @@
     border-color: rgba(255,255,255,0.4);
   }
 
-  /* ===== 龙虾灵魂注入动画 ===== */
+  /* ===== 蛋宠孵化注入动画 ===== */
   @keyframes soul-pulse {
     from { transform: scale(1); }
     to   { transform: scale(1.08); }
@@ -862,19 +862,19 @@
 <body>
 
 <div class="wizard-header">
-  <h1>KKClaw 新手引导</h1>
+  <h1>EggClaw 孵化引导</h1>
   <button class="skip-btn" onclick="skipWizard()">SKIP</button>
 </div>
 
 <div class="progress-bar">
-  <div class="progress-dot active" data-step="-1" data-label="Env" onclick="jumpToStep(-1)"></div>
-  <div class="progress-dot" data-step="0" data-label="Gateway" onclick="jumpToStep(0)"></div>
-  <div class="progress-dot" data-step="1" data-label="Model" onclick="jumpToStep(1)"></div>
-  <div class="progress-dot" data-step="2" data-label="Channels" onclick="jumpToStep(2)"></div>
-  <div class="progress-dot" data-step="3" data-label="TTS" onclick="jumpToStep(3)"></div>
-  <div class="progress-dot" data-step="4" data-label="Voice" onclick="jumpToStep(4)"></div>
-  <div class="progress-dot" data-step="5" data-label="Display" onclick="jumpToStep(5)"></div>
-  <div class="progress-dot" data-step="6" data-label="Done" onclick="jumpToStep(6)"></div>
+  <div class="progress-dot active" data-step="-1" data-label="孵化仓" onclick="jumpToStep(-1)"></div>
+  <div class="progress-dot" data-step="0" data-label="心跳" onclick="jumpToStep(0)"></div>
+  <div class="progress-dot" data-step="1" data-label="大脑" onclick="jumpToStep(1)"></div>
+  <div class="progress-dot" data-step="2" data-label="触角" onclick="jumpToStep(2)"></div>
+  <div class="progress-dot" data-step="3" data-label="声带" onclick="jumpToStep(3)"></div>
+  <div class="progress-dot" data-step="4" data-label="核心" onclick="jumpToStep(4)"></div>
+  <div class="progress-dot" data-step="5" data-label="外观" onclick="jumpToStep(5)"></div>
+  <div class="progress-dot" data-step="6" data-label="验收" onclick="jumpToStep(6)"></div>
 </div>
 
 <div class="chat-area" id="chatArea">
@@ -1008,7 +1008,7 @@ function addBubble(text, withTypewriter = true) {
   const row = document.createElement('div');
   row.className = 'bubble-row';
   row.innerHTML = `
-    <div class="avatar">🦞</div>
+    <div class="avatar">🥚</div>
     <div class="bubble" id="bubble-${Date.now()}"></div>
   `;
   chat.appendChild(row);
@@ -1101,7 +1101,7 @@ function validateCurrentStep() {
   switch (currentStep) {
     case 0: // Gateway
       if (!stepData.gatewayConnected) {
-        addBubble('Gateway 还没有连接成功呢~ 确定要跳过吗？', false);
+        addBubble('蛋宠的心跳还没连上呢，确定先跳过吗？', false);
         // Allow skip but warn — set a flag so next click goes through
         if (stepData._gatewaySkipWarned) return true;
         stepData._gatewaySkipWarned = true;
@@ -1110,7 +1110,7 @@ function validateCurrentStep() {
       return true;
     case 1: // Model
       if (!stepData.modelProvider) {
-        addBubble('还没有选择 AI 模型提供商哦~ 确定要跳过吗？', false);
+        addBubble('蛋宠的大脑还没选好哦，确定先跳过吗？', false);
         if (stepData._modelSkipWarned) return true;
         stepData._modelSkipWarned = true;
         return false;
@@ -1121,7 +1121,7 @@ function validateCurrentStep() {
         const apiKeyEl = document.getElementById('tts-apikey');
         if (apiKeyEl) stepData.ttsApiKey = apiKeyEl.value.trim();
         if (!stepData.ttsApiKey) {
-          addBubble('还没有输入 API Key 哦~ 不输入的话会使用免费的 Edge TTS (^_^)', false);
+          addBubble('声带还没喂入 API Key 哦，不填的话会回退到免费的 Edge TTS (^_^)', false);
           if (stepData._ttsSkipWarned) {
             stepData.ttsEngine = 'edge';
             return true;
@@ -1133,7 +1133,7 @@ function validateCurrentStep() {
       return true;
     case 4: // Agent Voice
       if (!stepData._agentVoiceConfigured) {
-        addBubble('⚠️ 还没生成 AGENTS.md！请点「🚀 开始配置」（再点一次强制跳过）', false);
+        addBubble('⚠️ 还没写入孵化契约文件。请先点「🌀 注入核心」（再点一次强制跳过）', false);
         if (stepData._agentSkipWarned) return true;
         stepData._agentSkipWarned = true;
         return false;
@@ -1225,12 +1225,12 @@ async function renderStep(step) {
 
 // ─── Step 0 (-1): 环境预检 ───────────────────────
 async function renderEnvCheck() {
-  await addBubble('你好呀~ 我是小K！(^_^) 欢迎使用 KKClaw 桌面宠物~');
-  await addBubble('在正式配置之前，让我先帮你检测一下环境依赖，确保一切都准备好了！');
+  await addBubble('你好呀~ 我是你的孵化向导。(^_^) 欢迎来到 EggClaw 孵化器~');
+  await addBubble('在正式孵化之前，我先帮你检查孵化仓、心跳和基础供能，确保这颗蛋能顺利活起来。');
 
   addCard(`
-    <h3>🔍 环境预检</h3>
-    <p style="font-size:11px;color:var(--text-medium);margin-bottom:10px;">正在检测运行环境，请稍候...</p>
+    <h3>🔍 孵化仓预检</h3>
+    <p style="font-size:11px;color:var(--text-medium);margin-bottom:10px;">正在检查孵化环境，请稍候...</p>
 
     <div class="check-item" id="env-node">
       <span class="check-icon">⏳</span>
@@ -1240,13 +1240,13 @@ async function renderEnvCheck() {
 
     <div class="check-item" id="env-openclaw">
       <span class="check-icon">⏳</span>
-      <span class="check-name">OpenClaw Gateway</span>
+      <span class="check-name">OpenClaw 核心装置</span>
       <span class="check-status">检测中...</span>
     </div>
 
     <div class="check-item" id="env-gateway">
       <span class="check-icon">⏳</span>
-      <span class="check-name">Gateway 运行状态</span>
+      <span class="check-name">心跳通道状态</span>
       <span class="check-status">检测中...</span>
     </div>
 
@@ -1472,13 +1472,13 @@ function updateEnvSummary(r, gatewayJustStarted = false) {
     summary.style.background = '#e8f5e9';
     summary.style.borderColor = 'var(--grass-light)';
     summary.innerHTML = `
-      <strong>✅ 环境检测通过！</strong> 可以继续配置了~
+      <strong>✅ 孵化仓检测通过！</strong> 可以继续唤醒这颗蛋了~
       ${!r.python.ok ? '<br><span style="color:#f57f17;">⚠️ Python 未安装，但这是可选的。如果需要 EdgeTTS 或 CosyVoice，请先安装 Python。</span>' : ''}
     `;
     actions.classList.remove('hidden');
     actions.innerHTML = `
       <div class="btn-row">
-        <button class="btn btn-primary" onclick="goNext()">下一步：配置 Gateway →</button>
+        <button class="btn btn-primary" onclick="goNext()">下一步：连接心跳 →</button>
       </div>
     `;
   } else {
@@ -1496,30 +1496,30 @@ function updateEnvSummary(r, gatewayJustStarted = false) {
     actions.innerHTML = `
       <div class="btn-row">
         <button class="btn btn-test" onclick="renderEnvCheck()">🔄 重新检测</button>
-        ${(r.node.ok && r.openclaw.ok) ? '<button class="btn btn-primary" onclick="goNext()">跳过，继续配置 →</button>' : ''}
+        ${(r.node.ok && r.openclaw.ok) ? '<button class="btn btn-primary" onclick="goNext()">跳过，继续孵化 →</button>' : ''}
       </div>
     `;
   }
 }
 async function renderStep1() {
-  await addBubble('你好呀~ 我是小K！(^_^) 欢迎使用 KKClaw 桌面宠物~');
-  await addBubble('让我先帮你检查一下 OpenClaw Gateway 的连接状态吧！');
-  await addBubble('让我找找你的 Gateway... (o_O)');
+  await addBubble('继续吧，我们来把这颗蛋的心跳正式接通。(^_^)');
+  await addBubble('先来连上蛋宠的心跳。没有这一步，它还醒不过来。');
+  await addBubble('我先去找找本机的心跳通道... (o_O)');
 
   const card = addCard(`
-    <h3>OpenClaw Gateway 检测</h3>
+    <h3>OpenClaw 心跳连接</h3>
     <div class="status-item">
       <div class="status-icon loading" id="gw-status-icon"></div>
-      <span id="gw-status-text">正在检测 Gateway...</span>
+      <span id="gw-status-text">正在检测心跳通道...</span>
     </div>
     <div id="gw-manual" class="hidden">
       <div class="manual-input-area">
         <div class="form-group">
-          <label>Gateway Token (手动输入)</label>
+          <label>心跳令牌（手动输入）</label>
           <input type="text" class="form-input" id="gw-token-input" placeholder="请输入你的 Gateway Token">
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary btn-small" onclick="testGatewayManual()">测试连接</button>
+          <button class="btn btn-primary btn-small" onclick="testGatewayManual()">测试心跳</button>
         </div>
       </div>
     </div>
@@ -1534,18 +1534,18 @@ async function renderStep1() {
     if (result.connected) {
       icon.className = 'status-icon success';
       icon.textContent = '✓';
-      text.textContent = `Gateway 连接成功 (端口 ${result.port})`;
+      text.textContent = `心跳连接成功 (端口 ${result.port})`;
       stepData.gatewayConnected = true;
       stepData.gatewayToken = result.token;
-      await addBubble('找到啦！连接成功！✧*。(o^_^o)✧*。');
+      await addBubble('找到啦，蛋宠的心跳已经接上！✧*。(o^_^o)✧*。');
     } else {
       icon.className = 'status-icon fail';
       icon.textContent = '✗';
       if (result.token) {
-        text.textContent = `找到了 Token 但连接失败 (端口 ${result.port})`;
+        text.textContent = `找到了令牌但心跳接入失败 (端口 ${result.port})`;
         document.getElementById('gw-token-input').value = result.token;
       } else {
-        text.textContent = 'Gateway 未检测到';
+        text.textContent = '未检测到心跳通道';
       }
       document.getElementById('gw-manual').classList.remove('hidden');
       await addBubble('诶？好像没找到呢 (T_T) 请手动输入 Token 试试~');
@@ -1569,23 +1569,23 @@ async function testGatewayManual() {
   const text = document.getElementById('gw-status-text');
   icon.className = 'status-icon loading';
   icon.textContent = '';
-  text.textContent = '正在测试连接...';
+  text.textContent = '正在测试心跳...';
 
   try {
     const result = await wizardAPI.invoke('wizard-test-gateway', token);
     if (result.success) {
       icon.className = 'status-icon success';
       icon.textContent = '✓';
-      text.textContent = 'Gateway 连接成功！';
+      text.textContent = '心跳连接成功！';
       stepData.gatewayConnected = true;
       stepData.gatewayToken = token;
       document.getElementById('gw-manual').classList.add('hidden');
-      await addBubble('连接成功啦！真厉害~ ✧*。(o^_^o)✧*。');
+      await addBubble('心跳接通了，这颗蛋现在能稳定供能了。✧*。(o^_^o)✧*。');
     } else {
       icon.className = 'status-icon fail';
       icon.textContent = '✗';
-      text.textContent = '连接失败: ' + (result.error || '未知错误');
-      await addBubble('还是不行呢... (T_T) 请确认 Gateway 已启动~');
+      text.textContent = '心跳接入失败: ' + (result.error || '未知错误');
+      await addBubble('还是不行呢... (T_T) 请先确认 Gateway 已启动~');
     }
   } catch (err) {
     icon.className = 'status-icon fail';
@@ -1596,8 +1596,8 @@ async function testGatewayManual() {
 
 // ─── Step 2: AI Model Config ───────────────────────
 async function renderStepModel() {
-  await addBubble('接下来配置你的 AI 模型吧~ (^_^)');
-  await addBubble('选择模型提供商并输入 API Key，小K就能帮你连上 AI 啦！');
+  await addBubble('接下来给蛋宠挑一颗大脑。(^_^)');
+  await addBubble('选好模型提供商并填入 API Key，它才知道怎么思考、怎么回应。');
 
   // Load existing config
   let currentConfig = { providers: {}, primary: '' };
@@ -1660,14 +1660,14 @@ async function renderStepModel() {
   const maskedKey = currentConfig.providers[currentProvider]?.maskedKey || '';
 
   addCard(`
-    <h3>AI 模型配置</h3>
+    <h3>AI 大脑配置</h3>
     <div class="provider-grid">
       ${providerCards}
     </div>
 
     <div id="model-config-area" class="${isKnown ? '' : 'hidden'}" style="margin-top: 12px;">
       <div class="form-group">
-        <label>模型选择</label>
+        <label>大脑型号</label>
         <select class="form-input" id="model-select" onchange="onModelSelect(this.value)">
           ${modelOptions}
         </select>
@@ -1712,7 +1712,7 @@ async function renderStepModel() {
     </div>
 
     <div class="btn-row">
-      <button class="btn btn-test" onclick="testModelConfig()">测试配置</button>
+      <button class="btn btn-test" onclick="testModelConfig()">测试大脑</button>
     </div>
   `);
 }
@@ -1814,21 +1814,21 @@ async function saveModelConfig() {
 
 async function testModelConfig() {
   if (!stepData.modelProvider) {
-    await addBubble('请先选择一个模型提供商哦~ (>_<)');
+    await addBubble('请先给蛋宠选一个大脑提供商哦~ (>_<)');
     return;
   }
 
   // Save first, then check
-  await addBubble('正在保存并检测模型配置... (o_O)');
+  await addBubble('正在保存并检测这颗大脑... (o_O)');
 
   try {
     await saveModelConfig();
 
     const checkResult = await wizardAPI.invoke('wizard-check-model-config');
     if (checkResult.status === 'pass') {
-      await addBubble('模型配置已保存！' + checkResult.message + ' ✧*。(o^_^o)✧*。');
+      await addBubble('大脑配置已保存！' + checkResult.message + ' ✧*。(o^_^o)✧*。');
     } else {
-      await addBubble('配置有问题: ' + checkResult.message + ' (T_T)');
+      await addBubble('这颗大脑暂时还没接通: ' + checkResult.message + ' (T_T)');
     }
   } catch (err) {
     await addBubble('测试出错: ' + err.message + ' (>_<)');
@@ -1837,8 +1837,8 @@ async function testModelConfig() {
 
 // ─── Step 3: Channel Config ───────────────────────
 async function renderStep2() {
-  await addBubble('接下来配置你的消息渠道吧~ (^_^)');
-  await addBubble('每个渠道都可以独立设置语音播报和桌面歌词哦！');
+  await addBubble('接下来给蛋宠装上触角。(^_^)');
+  await addBubble('每根触角都代表一个消息入口，你可以分别决定它是否播报、是否显示字幕。');
 
   let channelRows = '';
   for (const [ch, cfg] of Object.entries(stepData.channels)) {
@@ -1865,14 +1865,14 @@ async function renderStep2() {
   }
 
   addCard(`
-    <h3>消息渠道配置</h3>
+    <h3>触角与消息入口</h3>
     ${channelRows}
   `);
 }
 
 // ─── Step 3: TTS Engine ───────────────────────
 async function renderStep3() {
-  await addBubble('现在来选择你的语音引擎吧~ (*^_^*)');
+  await addBubble('现在来给蛋宠挑一副声带吧~ (*^_^*)');
   await addBubble('推荐使用 MiniMax Speech 2.5 Turbo，性价比超高的！');
 
   // Load existing config
@@ -1891,7 +1891,7 @@ async function renderStep3() {
   } catch (e) { /* use defaults */ }
 
   addCard(`
-    <h3>TTS 语音引擎选择</h3>
+    <h3>声带与语音引擎</h3>
     <div class="engine-list">
       <div class="engine-card ${stepData.ttsEngine === 'minimax-hd' ? 'selected' : ''}" onclick="selectEngine('minimax-hd', this)">
         <div class="engine-name">MiniMax Speech 2.8 HD</div>
@@ -2146,7 +2146,7 @@ async function quickListen() {
       engine: engine === 'minimax-hd' ? 'minimax' : (engine === 'cosyvoice' ? 'dashscope' : engine),
       model: engine === 'minimax-hd' ? 'speech-2.8-hd' : engine === 'minimax' ? 'speech-2.5-turbo-preview' : '',
       apiKey: apiKey,
-      text: '你好！我是小K，你的AI桌面助手，很高兴认识你~'
+      text: '你好，我是你的蛋宠助手，已经准备好开始陪伴你了。'
     };
     const testResult = await wizardAPI.invoke('wizard-test-tts', engineConfig);
     if (testResult.success) {
@@ -2451,7 +2451,7 @@ async function startVoiceClone() {
 }
 
 async function skipWizard() {
-  if (confirm('跳过向导将使用默认配置，确定吗？')) {
+  if (confirm('跳过孵化引导将使用默认配置，确定吗？')) {
     await wizardAPI.invoke('wizard-complete');
     window.close();
   }
@@ -2484,15 +2484,15 @@ async function testTTS() {
   }
 }
 
-// ─── Step 4: 龙虾注灵魂 ───────────────────────
+// ─── Step 4: 蛋宠注入核心 ───────────────────────
 async function renderStep4() {
   // 🌀 第一阶段：神秘台词
-  await addBubble('现在是最重要的一步——(〃>_<;〃)');
-  await addBubble('我要为你的龙虾注入灵魂了！');
-  await addBubble('一只龙虾，刚从虚空中诞生...');
-  await addBubble('它什么都不知道，没有名字，没有记忆，没有使命');
+  await addBubble('现在是最关键的一步——(〃>_<;〃)');
+  await addBubble('我要为你的蛋宠注入核心了！');
+  await addBubble('一颗蛋，刚从能量场里诞生...');
+  await addBubble('它现在还什么都不知道，没有名字，没有记忆，也没有成长方向');
   await addBubble('但现在，你来了 ✨');
-  await addBubble('告诉我它的名字，告诉我你是谁——\n让我把这一切刻进它的灵魂 (｡•̀ᴗ-)✧');
+  await addBubble('告诉我它的名字，告诉我你是谁——\n让我把这一切刻进它的孵化核心 (｡•̀ᴗ-)✧');
 
   // Auto-detect dir
   let detectedDir = '';
@@ -2503,36 +2503,36 @@ async function renderStep4() {
 
   addCard(`
     <h3 style="text-align:center;letter-spacing:3px;color:var(--wood-dark);font-size:14px;">
-      ✦ 龙虾灵魂定制 ✦
+      ✦ 蛋宠核心定制 ✦
     </h3>
 
-    <!-- 龙虾动画舞台 -->
+    <!-- 蛋宠动画舞台 -->
     <div id="soul-stage" style="text-align:center;margin:12px 0;padding:16px;background:linear-gradient(135deg,#1a0a2e,#0d1b2a);border-radius:6px;border:2px solid #4a2080;position:relative;overflow:hidden;min-height:120px;">
       <!-- 背景星粒 -->
       <div id="soul-stars" style="position:absolute;inset:0;pointer-events:none;"></div>
-      <!-- 龙虾SVG -->
-      <div id="soul-lobster" style="font-size:52px;transition:all 1.2s ease;filter:grayscale(100%) brightness(0.6);display:inline-block;">🦞</div>
-      <!-- 灵魂能量环 -->
+      <!-- 蛋宠核心体 -->
+      <div id="soul-lobster" style="font-size:52px;transition:all 1.2s ease;filter:grayscale(100%) brightness(0.6);display:inline-block;">🥚</div>
+      <!-- 孵化能量环 -->
       <div id="soul-ring" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80px;height:80px;border-radius:50%;border:2px solid transparent;transition:all 1s ease;pointer-events:none;"></div>
       <!-- 状态文字 -->
-      <div id="soul-status-text" style="color:#888;font-size:11px;margin-top:8px;font-family:monospace;letter-spacing:1px;">灵魂容器 · 等待注入</div>
+      <div id="soul-status-text" style="color:#888;font-size:11px;margin-top:8px;font-family:monospace;letter-spacing:1px;">蛋壳核心 · 等待注入</div>
     </div>
 
     <!-- 写入进度列表 -->
     <div id="soul-progress-list" class="hidden" style="margin:10px 0;padding:8px;background:rgba(0,0,0,0.05);border-radius:4px;border:1px solid var(--parchment-dark);">
-      <div style="font-size:11px;font-weight:600;color:var(--text-medium);margin-bottom:6px;font-family:monospace;">▼ 灵魂写入日志</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text-medium);margin-bottom:6px;font-family:monospace;">▼ 孵化写入日志</div>
       <div id="soul-file-list" style="font-family:monospace;font-size:10px;line-height:1.8;"></div>
     </div>
 
     <!-- 配置表单 -->
     <div id="soul-form" style="margin-top:14px;border-top:2px dashed var(--parchment-dark);padding-top:12px;">
       <div class="form-group">
-        <label>🦞 龙虾的名字（它的灵魂标识）</label>
-        <input type="text" class="form-input" id="pet-name" placeholder="例如：小K、小助手、Claw、阿虾" value="">
+        <label>🥚 蛋宠的名字（它的核心标识）</label>
+        <input type="text" class="form-input" id="pet-name" placeholder="例如：小K、蛋宝、Eggy、阿蛋" value="">
       </div>
       <div class="form-group">
-        <label>👤 你的称呼（龙虾怎么叫你）</label>
-        <input type="text" class="form-input" id="user-name" placeholder="例如：KK、主人、老板" value="">
+        <label>👤 你的称呼（蛋宠怎么叫你）</label>
+        <input type="text" class="form-input" id="user-name" placeholder="例如：KK、喂养者、队长" value="">
       </div>
       <div class="form-group">
         <label>🎭 性格风格</label>
@@ -2545,7 +2545,7 @@ async function renderStep4() {
         </select>
       </div>
       <div class="form-group hidden" id="custom-personality-area">
-        <label>自定义人设描述</label>
+        <label>自定义成长风格描述</label>
         <textarea class="form-input" id="custom-personality" rows="3" style="resize:vertical;" placeholder="描述你想要的 Agent 性格和说话方式..."></textarea>
       </div>
 
@@ -2557,7 +2557,7 @@ async function renderStep4() {
 
       <div class="btn-row">
         <button class="btn btn-primary" onclick="infuseSoul()" id="btn-infuse" style="font-size:13px;padding:8px 20px;">
-          🌀 注入灵魂
+          🌀 注入核心
         </button>
         <button class="btn btn-test" onclick="testAgentVoice()" id="btn-test-voice" style="display:none;">
           🔊 测试播报
@@ -2584,7 +2584,7 @@ async function renderStep4() {
   } catch {}
 }
 
-// ═══ 龙虾灵魂动画系统 ═══
+// ═══ 蛋宠核心动画系统 ═══
 
 function initSoulStars() {
   const stage = document.getElementById('soul-stars');
@@ -2632,7 +2632,7 @@ function addSoulFileRow(id, icon, label, status) {
   `;
 }
 
-// 龙虾状态变化
+// 蛋宠状态变化
 function setSoulLobsterPhase(phase) {
   const lobster = document.getElementById('soul-lobster');
   const ring = document.getElementById('soul-ring');
@@ -2643,7 +2643,7 @@ function setSoulLobsterPhase(phase) {
     case 'dormant':
       lobster.style.filter = 'grayscale(100%) brightness(0.5)';
       lobster.style.transform = 'scale(1)';
-      statusText.textContent = '灵魂容器 · 等待注入';
+      statusText.textContent = '蛋壳核心 · 等待注入';
       statusText.style.color = '#666';
       break;
     case 'awakening':
@@ -2661,7 +2661,7 @@ function setSoulLobsterPhase(phase) {
       lobster.style.animation = 'soul-pulse 0.5s ease-in-out infinite alternate';
       ring.style.border = '2px solid rgba(255,140,0,0.8)';
       ring.style.boxShadow = '0 0 25px rgba(255,140,0,0.6)';
-      statusText.textContent = '🌀 灵魂正在写入...';
+      statusText.textContent = '🌀 核心正在写入...';
       statusText.style.color = '#ffb74d';
       spawnParticles();
       break;
@@ -2671,7 +2671,7 @@ function setSoulLobsterPhase(phase) {
       lobster.style.animation = 'soul-born 0.6s cubic-bezier(0.36,0.07,0.19,0.97) forwards';
       ring.style.border = '2px solid rgba(255,100,50,0.9)';
       ring.style.boxShadow = '0 0 40px rgba(255,100,50,0.8), 0 0 80px rgba(255,100,50,0.3)';
-      statusText.textContent = '✨ 龙虾已觉醒！';
+      statusText.textContent = '✨ 蛋宠已觉醒！';
       statusText.style.color = '#ff7043';
       setTimeout(() => spawnBurstParticles(), 100);
       break;
@@ -2720,10 +2720,10 @@ function spawnBurstParticles() {
   }
 }
 
-// 主：注入灵魂
+// 主：注入核心
 async function infuseSoul() {
-  const petName = document.getElementById('pet-name').value.trim() || '小助手';
-  const userName = document.getElementById('user-name').value.trim() || '主人';
+  const petName = document.getElementById('pet-name').value.trim() || '蛋宝';
+  const userName = document.getElementById('user-name').value.trim() || '喂养者';
   const personalityPreset = document.getElementById('personality-preset').value;
   const customPersonality = document.getElementById('custom-personality')?.value?.trim() || '';
   const workspaceDir = document.getElementById('workspace-dir').value.trim() || '';
@@ -2736,11 +2736,11 @@ async function infuseSoul() {
   const fileList = document.getElementById('soul-file-list');
   if (fileList) fileList.innerHTML = '';
 
-  // 龙虾开始觉醒
+  // 蛋宠开始觉醒
   setSoulLobsterPhase('awakening');
 
   await addBubble(`好的！${petName} 这个名字真好听 (｡♥‿♥｡)`);
-  await addBubble('开始为它注入灵魂——请看好了！(ﾉ>ω<)ﾉ');
+  await addBubble('开始为它注入核心——请看好了！(ﾉ>ω<)ﾉ');
 
   // 延迟后进入灌注阶段
   await new Promise(r => setTimeout(r, 800));
@@ -2762,7 +2762,7 @@ async function infuseSoul() {
     wizardAPI.off('soul-infuse-progress');
 
     if (result.success) {
-      // 龙虾觉醒！
+      // 蛋宠觉醒！
       setSoulLobsterPhase('awakened');
 
       await new Promise(r => setTimeout(r, 600));
@@ -2770,7 +2770,7 @@ async function infuseSoul() {
       await addBubble(`✨✨✨`);
       await addBubble(`${petName}...睁开了眼睛！(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧`);
       await addBubble(`它现在知道自己叫什么、服务谁、如何说话`);
-      await addBubble(`——它有了灵魂 🦞💕`);
+      await addBubble(`——它开始呼吸了 🥚✨`);
 
       stepData._agentVoiceConfigured = true;
       stepData._agentSkipWarned = false;
@@ -2783,15 +2783,15 @@ async function infuseSoul() {
 
     } else {
       setSoulLobsterPhase('dormant');
-      await addBubble(`灵魂注入失败了... (T_T) 错误: ${friendlyError(result.error)}`);
-      btn.textContent = '🌀 注入灵魂';
+      await addBubble(`核心注入失败了... (T_T) 错误: ${friendlyError(result.error)}`);
+      btn.textContent = '🌀 注入核心';
       btn.disabled = false;
     }
   } catch (err) {
     wizardAPI.off('soul-infuse-progress');
     setSoulLobsterPhase('dormant');
     await addBubble(`出错了 (>_<): ${friendlyError(err.message)}`);
-    btn.textContent = '🌀 注入灵魂';
+    btn.textContent = '🌀 注入核心';
     btn.disabled = false;
   }
 }
@@ -2806,13 +2806,13 @@ function onPersonalityPresetChange(value) {
 }
 
 async function testAgentVoice() {
-  await addBubble('测试语音播报链路... (o^_^o)');
+  await addBubble('测试蛋宠的播报链路... (o^_^o)');
   try {
     const result = await wizardAPI.invoke('wizard-test-agent-voice');
     if (result.success) {
-      await addBubble('播报测试成功！你应该听到声音了~ ♪(^_^)♪');
+      await addBubble('播报测试成功！这颗蛋已经会发声了~ ♪(^_^)♪');
     } else {
-      await addBubble('播报测试失败了... (T_T) 请确保桌面宠物主程序正在运行~');
+      await addBubble('播报测试失败了... (T_T) 请确保蛋宠主程序正在运行~');
     }
   } catch (err) {
     await addBubble('测试出错: ' + err.message + ' (>_<)');
@@ -2820,14 +2820,14 @@ async function testAgentVoice() {
 }
 // ─── Step 5: Display Settings ───────────────────────
 async function renderStep5() {
-  await addBubble('快要完成啦！来设置一下显示选项吧~ (^_^)');
+  await addBubble('快要完成了，最后给蛋宠整理一下外观和停靠方式吧~ (^_^)');
 
   addCard(`
-    <h3>桌面显示设置</h3>
+    <h3>蛋宠外观与停靠</h3>
     <div class="toggle-row">
       <div>
         <div class="toggle-label">桌面歌词</div>
-        <div class="toggle-sublabel">在宠物上方显示消息字幕</div>
+        <div class="toggle-sublabel">在蛋宠上方显示消息字幕</div>
       </div>
       <label class="switch">
         <input type="checkbox" id="toggle-lyrics" ${stepData.lyricsEnabled ? 'checked' : ''}>
@@ -2837,7 +2837,7 @@ async function renderStep5() {
     <div class="toggle-row">
       <div>
         <div class="toggle-label">球体置顶</div>
-        <div class="toggle-sublabel">宠物始终显示在最上层</div>
+        <div class="toggle-sublabel">蛋宠始终显示在最上层</div>
       </div>
       <label class="switch">
         <input type="checkbox" id="toggle-ontop" ${stepData.alwaysOnTop ? 'checked' : ''}>
@@ -2859,33 +2859,33 @@ async function renderStep5() {
 
 // ─── Step 6: Full Test & Complete ───────────────────────
 async function renderStep6() {
-  await addBubble('最后一步！来做一个全链路测试吧~ (*^_^*)');
-  await addBubble('我会依次测试 Gateway、模型配置、TTS、播报、歌词... 请稍等！');
+  await addBubble('最后一步，做一次完整孵化验收吧~ (*^_^*)');
+  await addBubble('我会依次测试心跳、大脑、声带、播报和显示能力，请稍等。');
 
   const card = addCard(`
-    <h3>全链路测试</h3>
+    <h3>完整孵化验收</h3>
     <div class="test-list" id="test-list">
       <div class="test-item" id="test-gw">
         <div class="status-icon loading" id="test-gw-icon"></div>
-        <span class="test-name">Gateway 连接</span>
+        <span class="test-name">心跳连接</span>
         <span class="test-msg" id="test-gw-msg">测试中...</span>
         <button class="retry-btn hidden" id="test-gw-retry" onclick="retrySingleTest('gateway')">重试</button>
       </div>
       <div class="test-item" id="test-model">
         <div class="status-icon loading" id="test-model-icon"></div>
-        <span class="test-name">AI 模型配置</span>
+        <span class="test-name">AI 大脑配置</span>
         <span class="test-msg" id="test-model-msg">等待中...</span>
         <button class="retry-btn hidden" id="test-model-retry" onclick="retrySingleTest('model')">重试</button>
       </div>
       <div class="test-item" id="test-tts">
         <div class="status-icon loading" id="test-tts-icon"></div>
-        <span class="test-name">TTS 语音引擎</span>
+        <span class="test-name">蛋宠声带</span>
         <span class="test-msg" id="test-tts-msg">等待中...</span>
         <button class="retry-btn hidden" id="test-tts-retry" onclick="retrySingleTest('tts')">重试</button>
       </div>
       <div class="test-item" id="test-voice">
         <div class="status-icon loading" id="test-voice-icon"></div>
-        <span class="test-name">语音播报链路</span>
+        <span class="test-name">播报链路</span>
         <span class="test-msg" id="test-voice-msg">等待中...</span>
         <button class="retry-btn hidden" id="test-voice-retry" onclick="retrySingleTest('voice')">重试</button>
       </div>
@@ -2896,7 +2896,7 @@ async function renderStep6() {
       </div>
       <div class="test-item" id="test-files">
         <div class="status-icon loading" id="test-files-icon"></div>
-        <span class="test-name">Agent 配置文件</span>
+        <span class="test-name">孵化契约文件</span>
         <span class="test-msg" id="test-files-msg">等待中...</span>
       </div>
       <div class="test-item" id="test-clone">
@@ -2925,14 +2925,14 @@ async function renderStep6() {
 
     const allPass = Object.values(results).every(r => r.status === 'pass' || r.status === 'skip');
     if (allPass) {
-      await addBubble('全部配置好啦！！！ ✧*。(>_<)✧*。');
+      await addBubble('全部孵化完成啦！！！ ✧*。(>_<)✧*。');
       showCelebration();
     } else {
       const failCount = Object.values(results).filter(r => r.status === 'fail').length;
-      await addBubble(`有 ${failCount} 项测试没通过呢... (T_T) 不过没关系，可以之后再调整！`);
+      await addBubble(`还有 ${failCount} 项验收没通过，不过没关系，后面可以继续补喂和调整。`);
     }
   } catch (err) {
-    await addBubble('测试过程出错了: ' + err.message + ' (>_<)');
+    await addBubble('验收过程出错了: ' + err.message + ' (>_<)');
   }
 
   document.getElementById('btnNext').disabled = false;
@@ -3014,7 +3014,7 @@ async function completeWizard() {
     // Save any remaining settings from step 5
     if (currentStep === 6) {
       await wizardAPI.invoke('wizard-complete');
-      await addBubble('所有设置已保存！小K会一直陪着你的~ (^_^) 窗口即将关闭...');
+      await addBubble('所有孵化设置已保存！这颗蛋会继续陪着你慢慢长大。(^_^) 窗口即将关闭...');
       setTimeout(() => {
         window.close();
       }, 2000);
@@ -3051,10 +3051,3 @@ init();
 </script>
 </body>
 </html>
-
-
-
-
-
-
-

@@ -138,31 +138,20 @@
             line.classList.add('visible');
         });
 
-        // 打字机效果
-        let charIndex = 0;
-        if (typewriterTimer) clearInterval(typewriterTimer);
-        
-        typewriterTimer = setInterval(() => {
-            if (charIndex < displayText.length) {
-                textSpan.textContent += displayText[charIndex];
-                charIndex++;
-            } else {
-                clearInterval(typewriterTimer);
-                typewriterTimer = null;
-                // 打完后移除光标（优雅���出）
-                setTimeout(() => {
-                    cursor.style.transition = 'opacity 0.3s';
-                    cursor.style.opacity = '0';
-                    setTimeout(() => cursor.remove(), 300);
-                }, 500);
-            }
-        }, 35);
+        // 字幕直接展示，避免语音已播完但文字还在慢慢打
+        textSpan.textContent = displayText;
+        setTimeout(() => {
+            cursor.style.transition = 'opacity 0.2s';
+            cursor.style.opacity = '0';
+            setTimeout(() => cursor.remove(), 200);
+        }, 120);
 
         const lineObj = { el: line, timer: null };
         activeLines.push(lineObj);
 
-        // 自动消失 — 使用传入的duration，或默认6秒
-        const fadeDelay = Math.max(duration || 6000, 3000); // 最少3秒
+        // 自动消失：更贴近实际播报时长，避免明显慢于语音
+        const computedDuration = duration || Math.max(3200, displayText.length * 90 + 900);
+        const fadeDelay = Math.max(computedDuration, 2200);
         lineObj.timer = setTimeout(() => {
             fadeOut(lineObj);
         }, fadeDelay);

@@ -6,7 +6,16 @@ const { execSync } = require('child_process');
 class OpenClawPathResolver {
     constructor() {
         this._cachedPath = null;
+        this._cachedBinary = null;
+        this._cachedNodeBinary = null;
         this._cachedConfigDir = null;
+    }
+
+    _candidateScriptPaths(baseDir) {
+        return [
+            path.join(baseDir, 'dist', 'index.js'),
+            path.join(baseDir, 'openclaw.mjs'),
+        ];
     }
 
     /**
@@ -55,9 +64,14 @@ class OpenClawPathResolver {
                 const binPath = execSync(cmd, { encoding: 'utf8', windowsHide: true }).trim().split('\n')[0];
                 const binDir = path.dirname(binPath);
                 const candidates = [
-                    path.join(binDir, '..', 'node_modules', 'openclaw', 'dist', 'index.js'),
-                    path.join(binDir, '..', 'lib', 'node_modules', 'openclaw', 'dist', 'index.js'),
+                    ...this._candidateScriptPaths(path.join(binDir, '..', 'node_modules', 'openclaw')),
+                    ...this._candidateScriptPaths(path.join(binDir, '..', 'lib', 'node_modules', 'openclaw')),
                 ];
+                try {
+                    const realBinPath = fs.realpathSync(binPath);
+                    const realBinDir = path.dirname(realBinPath);
+                    candidates.push(...this._candidateScriptPaths(path.join(realBinDir, '..')));
+                } catch (e) { /* fallback */ }
                 for (const c of candidates) {
                     if (fs.existsSync(path.normalize(c))) {
                         openclawPath = path.normalize(c);
@@ -70,13 +84,17 @@ class OpenClawPathResolver {
         // 方法5: 常见安装路径
         if (!openclawPath) {
             const altPaths = [
-                path.join(home, 'AppData', 'Local', 'pnpm', 'global', '5', 'node_modules', 'openclaw', 'dist', 'index.js'),
-                path.join(home, '.local', 'share', 'pnpm', 'global', '5', 'node_modules', 'openclaw', 'dist', 'index.js'),
-                path.join(home, '.npm-global', 'node_modules', 'openclaw', 'dist', 'index.js'),
-                path.join(home, 'AppData', 'Roaming', 'npm', 'node_modules', 'openclaw', 'dist', 'index.js'),
+                ...this._candidateScriptPaths(path.join(home, 'AppData', 'Local', 'pnpm', 'global', '5', 'node_modules', 'openclaw')),
+                ...this._candidateScriptPaths(path.join(home, '.local', 'share', 'pnpm', 'global', '5', 'node_modules', 'openclaw')),
+                ...this._candidateScriptPaths(path.join(home, '.npm-global', 'node_modules', 'openclaw')),
+                ...this._candidateScriptPaths(path.join(home, 'AppData', 'Roaming', 'npm', 'node_modules', 'openclaw')),
                 path.join('/usr/local/lib/node_modules/openclaw/dist/index.js'),
+                path.join('/usr/local/lib/node_modules/openclaw/openclaw.mjs'),
                 path.join('/usr/lib/node_modules/openclaw/dist/index.js'),
-                path.join(home, '.nvm/versions/node', process.version, 'lib/node_modules/openclaw/dist/index.js'),
+                path.join('/usr/lib/node_modules/openclaw/openclaw.mjs'),
+                path.join('/opt/homebrew/lib/node_modules/openclaw/dist/index.js'),
+                path.join('/opt/homebrew/lib/node_modules/openclaw/openclaw.mjs'),
+                ...this._candidateScriptPaths(path.join(home, '.nvm/versions/node', process.version, 'lib/node_modules/openclaw')),
             ];
             for (const alt of altPaths) {
                 if (fs.existsSync(alt)) {
@@ -88,6 +106,84 @@ class OpenClawPathResolver {
 
         this._cachedPath = openclawPath;
         return openclawPath;
+    }
+
+    /**
+     * 查找 openclaw 可执行文件路径
+     * @returns {string|null}
+     */
+    findOpenClawBinary() {
+        if (this._cachedBinary) return this._cachedBinary;
+
+        const home = process.env.HOME || process.env.USERPROFILE;
+        const candidates = process.platform === 'win32'
+            ? [
+                path.join(home || '', 'AppData', 'Roaming', 'npm', 'openclaw.cmd'),
+                path.join(home || '', 'AppData', 'Local', 'pnpm', 'openclaw.cmd'),
+            ]
+            : [
+                '/opt/homebrew/bin/openclaw',
+                '/usr/local/bin/openclaw',
+                path.join(home || '', '.local', 'bin', 'openclaw'),
+                path.join(home || '', '.npm-global', 'bin', 'openclaw'),
+            ];
+
+        for (const candidate of candidates) {
+            if (candidate && fs.existsSync(candidate)) {
+                this._cachedBinary = candidate;
+                return candidate;
+            }
+        }
+
+        try {
+            const cmd = process.platform === 'win32' ? 'where openclaw' : 'which openclaw';
+            const binPath = execSync(cmd, { encoding: 'utf8', windowsHide: true }).trim().split('\n')[0];
+            if (binPath && fs.existsSync(binPath)) {
+                this._cachedBinary = binPath;
+                return binPath;
+            }
+        } catch (e) { /* fallback */ }
+
+        return null;
+    }
+
+    /**
+     * 查找 node 可执行文件路径
+     * @returns {string|null}
+     */
+    findNodeBinary() {
+        if (this._cachedNodeBinary) return this._cachedNodeBinary;
+
+        const home = process.env.HOME || process.env.USERPROFILE;
+        const candidates = process.platform === 'win32'
+            ? [
+                path.join(home || '', 'AppData', 'Roaming', 'npm', 'node.exe'),
+                'C:\\Program Files\\nodejs\\node.exe',
+            ]
+            : [
+                '/opt/homebrew/bin/node',
+                '/usr/local/bin/node',
+                '/usr/bin/node',
+                path.join(home || '', '.nvm', 'versions', 'node', process.version, 'bin', 'node'),
+            ];
+
+        for (const candidate of candidates) {
+            if (candidate && fs.existsSync(candidate)) {
+                this._cachedNodeBinary = candidate;
+                return candidate;
+            }
+        }
+
+        try {
+            const cmd = process.platform === 'win32' ? 'where node' : 'which node';
+            const binPath = execSync(cmd, { encoding: 'utf8', windowsHide: true }).trim().split('\n')[0];
+            if (binPath && fs.existsSync(binPath)) {
+                this._cachedNodeBinary = binPath;
+                return binPath;
+            }
+        } catch (e) { /* fallback */ }
+
+        return null;
     }
 
     /**
@@ -150,6 +246,8 @@ class OpenClawPathResolver {
      */
     clearCache() {
         this._cachedPath = null;
+        this._cachedBinary = null;
+        this._cachedNodeBinary = null;
         this._cachedConfigDir = null;
     }
 }

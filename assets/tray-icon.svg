@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="egg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff2dc"/>
+      <stop offset="100%" stop-color="#f3b8d9"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff4a8"/>
+      <stop offset="100%" stop-color="#ffcf3f"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="32" cy="34" rx="17" ry="22" fill="url(#egg)" stroke="#ffffff" stroke-opacity="0.8" stroke-width="2"/>
+  <path d="M37 12c2 0 3 2 2 4l-4 10h7c2 0 3 2 2 4L31 49c-1 2-4 1-4-1l4-11h-6c-2 0-3-2-2-4l11-18c1-2 2-3 3-3Z" fill="url(#bolt)" stroke="#ffe890" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

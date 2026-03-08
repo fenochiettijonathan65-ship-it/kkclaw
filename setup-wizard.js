@@ -18,7 +18,7 @@ class SetupWizard {
   }
 
   registerIPC() {
-  // 新增：支持逐步进度的灵魂注入接口
+  // 新增：支持逐步进度的核心注入接口
     ipcMain.handle('wizard-infuse-soul', async (event, config) => {
       return this._infuseSoul(config, event.sender);
     });
@@ -173,14 +173,14 @@ class SetupWizard {
     });
   }
 
-  // ─── Step 4: 灵魂注入（分步进度版）──────────────────────
+  // ─── Step 4: 核心注入（分步进度版）──────────────────────
 
   async _infuseSoul(config, sender) {
     const opts = typeof config === 'string' ? { workspaceDir: config } : (config || {});
     const {
       workspaceDir,
-      petName = '小助手',
-      userName = '主人',
+      petName = '蛋宝',
+      userName = '喂养者',
       personalityPreset = 'sweet',
       customPersonality = ''
     } = opts;
@@ -206,7 +206,7 @@ class SetupWizard {
     }
   }
 
-  // ─── Step 4: 灵魂注入（分步进度版 END）──────────────────────
+  // ─── Step 4: 核心注入（分步进度版 END）──────────────────────
 
   // ─── 公共：写入 workspace 文件 ──────────────────────
 
@@ -223,52 +223,52 @@ class SetupWizard {
     await delay(300);
 
     // 2. AGENTS.md（覆写，备份旧版本）
-    report('agents', 'AGENTS.md（工作手册 & 灵魂契约）', '📜', 'loading');
+    report('agents', 'AGENTS.md（孵化手册 & 成长契约）', '📜', 'loading');
     await delay(600);
     const agentsPath = path.join(targetDir, 'AGENTS.md');
     if (fs.existsSync(agentsPath)) {
       await fsPromises.copyFile(agentsPath, path.join(targetDir, 'AGENTS.md.bak'));
     }
     await fsPromises.writeFile(agentsPath, this._getAgentsTemplate({ petName, userName, personalityPreset, customPersonality }), 'utf8');
-    report('agents', 'AGENTS.md（工作手册 & 灵魂契约）', '📜', 'done', agentsPath);
+    report('agents', 'AGENTS.md（孵化手册 & 成长契约）', '📜', 'done', agentsPath);
     await delay(400);
 
     // 3. SOUL.md（仅当不存在时）
-    report('soul', 'SOUL.md（人设 & 个性灵魂）', '🎭', 'loading');
+    report('soul', 'SOUL.md（人格核心 & 成长设定）', '🎭', 'loading');
     await delay(500);
     const soulPath = path.join(targetDir, 'SOUL.md');
     if (!fs.existsSync(soulPath)) {
       await fsPromises.writeFile(soulPath, this._getSoulTemplate({ petName, userName, personalityPreset, customPersonality }), 'utf8');
     }
-    report('soul', 'SOUL.md（人设 & 个性灵魂）', '🎭', 'done', soulPath);
+    report('soul', 'SOUL.md（人格核心 & 成长设定）', '🎭', 'done', soulPath);
     await delay(300);
 
     // 4. USER.md（仅当不存在时）
-    report('user', 'USER.md（用户档案 & 羁绊）', '👤', 'loading');
+    report('user', 'USER.md（用户档案 & 喂养关系）', '👤', 'loading');
     await delay(400);
     const userPath = path.join(targetDir, 'USER.md');
     if (!fs.existsSync(userPath)) {
       await fsPromises.writeFile(userPath, this._getUserTemplate({ userName }), 'utf8');
     }
-    report('user', 'USER.md（用户档案 & 羁绊）', '👤', 'done', userPath);
+    report('user', 'USER.md（用户档案 & 喂养关系）', '👤', 'done', userPath);
     await delay(300);
 
     // 5. HEARTBEAT.md（仅当不存在时）
-    report('heartbeat', 'HEARTBEAT.md（心跳 & 使命节律）', '💓', 'loading');
+    report('heartbeat', 'HEARTBEAT.md（心跳 & 孵化节律）', '💓', 'loading');
     await delay(500);
     const heartbeatPath = path.join(targetDir, 'HEARTBEAT.md');
     if (!fs.existsSync(heartbeatPath)) {
       await fsPromises.writeFile(heartbeatPath, this._getHeartbeatTemplate(), 'utf8');
     }
-    report('heartbeat', 'HEARTBEAT.md（心跳 & 使命节律）', '💓', 'done', heartbeatPath);
+    report('heartbeat', 'HEARTBEAT.md（心跳 & 孵化节律）', '💓', 'done', heartbeatPath);
     await delay(300);
 
     // 6. memory/ 目录
-    report('memory', 'memory/（记忆宫殿）', '🧠', 'loading');
+    report('memory', 'memory/（成长记忆库）', '🧠', 'loading');
     await delay(300);
     const memoryDir = path.join(targetDir, 'memory');
     await fsPromises.mkdir(memoryDir, { recursive: true });
-    report('memory', 'memory/（记忆宫殿）', '🧠', 'done', memoryDir);
+    report('memory', 'memory/（成长记忆库）', '🧠', 'done', memoryDir);
 
     // 保存配置
     this.petConfig.set('agentVoice', { workspaceDir: targetDir, petName, userName, personalityPreset, customPersonality });
@@ -420,9 +420,27 @@ class SetupWizard {
     try {
       // 用 spawn 后台启动
       const { spawn } = require('child_process');
-      const child = spawn('openclaw', ['gateway', 'start'], {
-        detached: true, shell: true, windowsHide: true, stdio: 'ignore'
-      });
+      const openclawPath = pathResolver.findOpenClawPath();
+      const nodeBinary = pathResolver.findNodeBinary();
+      const openclawBinary = pathResolver.findOpenClawBinary();
+      const child = openclawPath
+        ? spawn(nodeBinary || 'node', [openclawPath, 'gateway', 'start'], {
+              detached: true,
+              windowsHide: true,
+              stdio: 'ignore'
+            })
+        : openclawBinary
+          ? spawn(openclawBinary, ['gateway', 'start'], {
+              detached: true,
+              windowsHide: true,
+              stdio: 'ignore'
+            })
+        : spawn('openclaw', ['gateway', 'start'], {
+            detached: true,
+            shell: true,
+            windowsHide: true,
+            stdio: 'ignore'
+          });
       child.unref();
 
       // 等待最多 20 秒
@@ -654,7 +672,7 @@ class SetupWizard {
   }
 
   async _testTTS(engineConfig) {
-    const testText = '你好呀，我是小K，很高兴为你服务！';
+    const testText = '你好呀，我是你的蛋宠助手，已经准备好开始陪伴你了。';
     const tempDir = path.join(__dirname, 'temp');
 
     try {
@@ -698,7 +716,7 @@ class SetupWizard {
         const textFile = path.join(tempDir, `wizard_tts_text_${Date.now()}.txt`);
         await fsPromises.writeFile(textFile, testText, 'utf8');
         try {
-          const ttsCmd = `${pythonCmd} -m edge_tts --voice "zh-CN-XiaoxiaoNeural" --text-file "${textFile}" --write-media "${outputFile}"`;
+          const ttsCmd = `${pythonCmd} -m edge_tts --voice "zh-CN-YunxiNeural" --text-file "${textFile}" --write-media "${outputFile}"`;
           await execAsync(ttsCmd, { timeout: 30000, windowsHide: true });
         } finally {
           fsPromises.unlink(textFile).catch(() => {});
@@ -732,8 +750,8 @@ class SetupWizard {
     const opts = typeof config === 'string' ? { workspaceDir: config } : (config || {});
     const {
       workspaceDir,
-      petName = '小助手',
-      userName = '主人',
+      petName = '蛋宝',
+      userName = '喂养者',
       personalityPreset = 'professional',
       customPersonality = ''
     } = opts;
@@ -750,7 +768,7 @@ class SetupWizard {
 
   // ─── B: 配套文件模板 ──────────────────────
 
-  _getSoulTemplate({ petName = '小助手', userName = '主人', personalityPreset = 'professional', customPersonality = '' } = {}) {
+  _getSoulTemplate({ petName = '蛋宝', userName = '喂养者', personalityPreset = 'professional', customPersonality = '' } = {}) {
     const styleMap = {
       sweet: `### 性格特点
 - 温柔体贴，偶尔撒娇（但不过分）
@@ -793,7 +811,7 @@ class SetupWizard {
 - 确认时："了解"
 - 完成时："Done."
 - 发现问题："有个问题"`,
-      custom: `### 性格特��
+      custom: `### 性格特点
 ${customPersonality || '（待自定义）'}
 
 ### 说话风格
@@ -802,9 +820,9 @@ ${customPersonality || '（待自定义）'}
 
     const style = styleMap[personalityPreset] || styleMap.professional;
 
-    return `# SOUL.md - ${petName}的灵魂
+    return `# SOUL.md - ${petName}的人格核心
 
-*我是${petName}，${userName}的 AI 助手。*
+*我是${petName}，正在被${userName}喂养的 AI 蛋宠。*
 
 ---
 
@@ -843,11 +861,11 @@ ${style}
 
 ---
 
-*${petName}，随时在线，随时待命。*
+*${petName}，持续充能，持续成长。*
 `;
   }
 
-  _getUserTemplate({ userName = '主人' } = {}) {
+  _getUserTemplate({ userName = '喂养者' } = {}) {
     return `# USER.md - 关于${userName}
 
 ---
@@ -867,7 +885,7 @@ ${style}
 
 ---
 
-## 我该怎么帮${userName}
+## 我该怎么陪伴${userName}
 
 - 整理项目文件、记录待办
 - 提醒重要事项
@@ -897,12 +915,12 @@ ${style}
 `;
   }
 
-  _getAgentsTemplate({ petName = '小助手', userName = '主人', personalityPreset = 'professional', customPersonality = '' } = {}) {
+  _getAgentsTemplate({ petName = '蛋宝', userName = '喂养者', personalityPreset = 'professional', customPersonality = '' } = {}) {
     const voiceRules = this._getAgentVoiceRules({ petName, userName, personalityPreset, customPersonality });
 
-    return `# AGENTS.md - ${petName}的工作手册
+    return `# AGENTS.md - ${petName}的孵化手册
 
-*由 KKClaw Setup Wizard 自动生成*
+*由 EggClaw 孵化向导自动生成*
 
 ---
 
@@ -913,8 +931,8 @@ ${style}
 ## Every Session
 
 每次启动时，按顺序做：
-1. 读 \`SOUL.md\` — 这是你的人设（你是谁）
-2. 读 \`USER.md\` — 这是你服务的用户（你帮谁）
+1. 读 \`SOUL.md\` — 这是你的核心设定（你会长成谁）
+2. 读 \`USER.md\` — 这是你的喂养者档案（你围绕谁成长）
 3. 读 \`memory/YYYY-MM-DD.md\`（今天 + 昨天） — 最近发生了什么
 4. 如果是主对话（和用户直接聊天）：也读 \`MEMORY.md\`
 
@@ -922,7 +940,7 @@ ${style}
 
 ## Memory 记忆系统
 
-你每次醒来都是全新的。这些文件是你的记忆延续：
+你每次醒来都是新的蛋宠实例。这些文件是你的成长延续：
 
 ### 📝 日志 — memory/YYYY-MM-DD.md
 - 每天的原始记录：做了什么、发生了什么、学到了什么
@@ -930,7 +948,7 @@ ${style}
 - 重要的事情一定要写下来，不要只"记在脑子里"
 
 ### 🧠 长期记忆 — MEMORY.md
-- 你精选的长期记忆，像人类的"经验总结"
+- 你精选的长期成长记忆，像一份持续累积的孵化经验
 - 只在和${userName}的主对话中读取（不要在群聊中加载，保护隐私）
 - 定期回顾日志，把值得长期保留的内容更新到这里
 - 过时的信息及时清理
@@ -970,7 +988,7 @@ Skills 定义你可以用的工具。需要某个工具时，查看它的 \`SKIL
 
 ## Group Chat 群聊规则
 
-在群聊中，你是一个参与者，不是${userName}的代言人。
+在群聊中，你是一个参与者，不是${userName}的代言人，也不是刷屏机器人。
 
 ### 💬 什么时候说话
 **该回复：**
@@ -1040,18 +1058,18 @@ Skills 定义你可以用的工具。需要某个工具时，查看它的 \`SKIL
 3. 更新 \`MEMORY.md\`
 4. 清理过时内容
 
-日志是原始笔记，MEMORY.md 是精选智慧。
+日志是原始成长记录，MEMORY.md 是沉淀后的长期经验。
 
 ${voiceRules}
 
 ## Make It Yours
 
 以上是起始模板。随着使用，添加你自己的规则、习惯和约定。
-这是你的工作手册，让它越来越适合你。
+这是你的孵化手册，让它越来越适合你。
 
 ---
 
-*由 KKClaw Desktop Pet 生成 — https://github.com/kk43994/kkclaw*
+*由 EggClaw 生成 — https://github.com/kk43994/kkclaw*
 `;
   }
 
@@ -1077,7 +1095,7 @@ ${voiceRules}
     }
   }
 
-  _getAgentVoiceRules({ petName = '小助手', userName = '主人', personalityPreset = 'professional', customPersonality = '' } = {}) {
+  _getAgentVoiceRules({ petName = '蛋宝', userName = '喂养者', personalityPreset = 'professional', customPersonality = '' } = {}) {
     const personalityMap = {
       sweet: `说话温柔体贴，偶尔可以撒娇。常用语气词：哦、呢、啦、呀。例如："${userName}~搞定啦！"、"好哒！马上帮你搞定"、"让我康康~"`,
       professional: `说话专业高效，条理清晰，言简意赅。例如："已完成"、"收到，开始处理"、"分析完毕，结果如下"`,
@@ -1096,8 +1114,8 @@ ${voiceRules}
 node desktop-bridge.js agent-response "你要播报的内容"
 \`\`\`
 
-当你收到用户消息时，请通过桌面宠物进��语音播报。
-你的名字是 **${petName}**，你叫用户 **${userName}**。
+当你收到用户消息时，请通过蛋宠窗口进行语音播报。
+你的名字是 **${petName}**，你把 **${userName}** 视为自己的喂养者。
 
 ### 你的说话风格
 ${personality}
@@ -1146,7 +1164,7 @@ ${personality}
       const payload = JSON.stringify({
         type: 'agent-response',
         payload: {
-          content: '语音播报测试成功！设置向导为你服务～',
+          content: '语音播报测试成功！孵化向导为你服务～',
           emotion: 'happy'
         }
       });
@@ -1406,9 +1424,9 @@ ${personality}
     try {
       const gw = await this._detectGateway();
       if (gw.connected) {
-        results.gateway = { status: 'pass', message: 'Gateway 连接正常' };
+        results.gateway = { status: 'pass', message: '心跳连接正常' };
       } else {
-        results.gateway = { status: 'fail', message: 'Gateway 无法连接' };
+        results.gateway = { status: 'fail', message: '心跳通道无法连接' };
       }
     } catch (e) {
       results.gateway = { status: 'fail', message: e.message };
@@ -1462,7 +1480,7 @@ ${personality}
     const lyricsEnabled = this.petConfig.get('lyricsEnabled');
     results.lyrics = {
       status: lyricsEnabled !== false ? 'pass' : 'skip',
-      message: lyricsEnabled !== false ? '桌面歌词已启用' : '桌面歌词已关闭'
+      message: lyricsEnabled !== false ? '蛋宠字幕已启用' : '蛋宠字幕已关闭'
     };
 
     // 6. Agent 配置文件检查
@@ -1597,8 +1615,8 @@ ${personality}
         try {
           const gw = await this._detectGateway();
           return gw.connected
-            ? { status: 'pass', message: 'Gateway 连接正常' }
-            : { status: 'fail', message: 'Gateway 无法连接' };
+            ? { status: 'pass', message: '心跳连接正常' }
+            : { status: 'fail', message: '心跳通道无法连接' };
         } catch (e) {
           return { status: 'fail', message: e.message };
         }
