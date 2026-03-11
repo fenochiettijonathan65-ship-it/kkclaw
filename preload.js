@@ -53,7 +53,23 @@ const VALID_INVOKE_CHANNELS = [
   'gateway-anomalies',
   'gateway-full-status',
   'gateway-clear-metrics',
-  'egg-growth-metrics'
+  'egg-growth-metrics',
+  'manager-overview',
+  'manager-service-action',
+  'manager-open-model-settings',
+  'manager-open-dashboard',
+  'manager-open-channels',
+  'manager-embed-url',
+  'manager-open-diagnostics',
+  'manager-session-status',
+  'manager-session-clear',
+  'manager-session-diagnose',
+  'manager-diagnostics-report',
+  'manager-errors-report',
+  'manager-requests-report',
+  'manager-gateway-health',
+  'app-get-language',
+  'app-set-language'
 ];
 
 const VALID_ON_CHANNELS = [
@@ -62,7 +78,8 @@ const VALID_ON_CHANNELS = [
   'agent-response',
   'status-update',
   'show-lyric',
-  'switch-log-entry'
+  'switch-log-entry',
+  'app-language-changed'
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {

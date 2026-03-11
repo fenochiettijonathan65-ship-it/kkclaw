@@ -91,6 +91,8 @@ class SetupWizard {
         voiceEnabled: this.petConfig.get('voiceEnabled') !== false,
         lyricsEnabled: this.petConfig.get('lyricsEnabled') !== false,
         alwaysOnTop: this.petConfig.get('alwaysOnTop') !== false,
+        autoLaunch: this.petConfig.get('autoLaunch') === true,
+        uiLanguage: this.petConfig.get('uiLanguage') || 'zh-CN',
         wizardStep: this.petConfig.get('wizardStep') || 0,
       };
     });
@@ -889,7 +891,7 @@ ${style}
 
     return `# AGENTS.md - ${petName}的孵化手册
 
-*由 EggClaw 孵化向导自动生成*
+*由 SparkEgg 孵化向导自动生成*
 
 ---
 
@@ -1038,7 +1040,7 @@ ${voiceRules}
 
 ---
 
-*由 EggClaw 生成 — https://github.com/kk43994/kkclaw*
+*由 SparkEgg 生成 — https://github.com/kk43994/kkclaw*
 `;
   }
 
@@ -1354,6 +1356,9 @@ ${personality}
   // ─── Step 5: 显示设置 ──────────────────────
 
   async _saveDisplaySettings(settings) {
+    if (settings.uiLanguage !== undefined) {
+      this.petConfig.set('uiLanguage', settings.uiLanguage || 'zh-CN');
+    }
     if (settings.lyricsEnabled !== undefined) {
       this.petConfig.set('lyricsEnabled', settings.lyricsEnabled);
     }

@@ -13,6 +13,7 @@ class PetConfig {
             position: { x: null, y: null },
             mood: 'happy', // happy, thinking, busy, sleepy
             theme: 'default',
+            uiLanguage: 'zh-CN',
             voiceEnabled: true,
             lastSeen: Date.now()
         };

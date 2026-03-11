@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>X Claw Incubator Console</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      background: radial-gradient(1200px 700px at 10% -10%, #34151f 0%, transparent 45%),
+                  radial-gradient(1200px 700px at 120% 10%, #11223c 0%, transparent 45%),
+                  #090b11;
+      color: #e8edf8;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .layout { display: grid; grid-template-columns: 220px 1fr; height: 100vh; }
+    .sidebar {
+      border-right: 1px solid rgba(255,255,255,0.08);
+      background: rgba(7, 10, 18, 0.9);
+      padding: 16px 12px;
+    }
+    .brand { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+    .nav-item {
+      padding: 10px 12px;
+      border-radius: 10px;
+      color: #b8c3dd;
+      margin-bottom: 6px;
+      font-size: 14px;
+      border: 1px solid transparent;
+      background: transparent;
+      cursor: pointer;
+      transition: 0.16s ease;
+    }
+    .nav-item:hover { color: #fff; background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+    .nav-item.active {
+      color: #fff;
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+      border-color: rgba(255,255,255,0.12);
+    }
+    .main { padding: 18px 20px; overflow: auto; }
+    .hidden { display: none !important; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .lang-select {
+      border: 1px solid #cfdcf0;
+      border-radius: 999px;
+      background: #fff;
+      color: #314b73;
+      height: 34px;
+      padding: 0 12px;
+      font-size: 12px;
+      outline: none;
+    }
+    .title { font-size: 22px; font-weight: 700; }
+    .status {
+      font-size: 13px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.06);
+    }
+    .status.running { color: #5cf29d; border-color: rgba(92,242,157,0.35); background: rgba(92,242,157,0.1); }
+    .status.stopped { color: #ff7a7a; border-color: rgba(255,122,122,0.35); background: rgba(255,122,122,0.1); }
+    .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 10px; }
+    .card {
+      border: 1px solid rgba(255,255,255,0.1);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      border-radius: 14px;
+      padding: 14px;
+      min-height: 98px;
+    }
+    .k { color: #9fb0d2; font-size: 12px; margin-bottom: 8px; }
+    .v { font-size: 29px; font-weight: 700; letter-spacing: -0.02em; }
+    .v.small { font-size: 22px; }
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .btn {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.04);
+      color: #ecf2ff;
+      min-height: 86px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.18s ease;
+    }
+    .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.08); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+    .btn.runtime-disabled {
+      border-color: rgba(181, 205, 255, 0.16) !important;
+      background: rgba(255,255,255,0.015) !important;
+      color: #7f92b8 !important;
+      box-shadow: none !important;
+    }
+    .btn.runtime-disabled:hover {
+      transform: none !important;
+      border-color: rgba(181, 205, 255, 0.16) !important;
+      background: rgba(255,255,255,0.015) !important;
+    }
+    .btn.start { border-color: rgba(80, 211, 141, 0.4); }
+    .btn.stop { border-color: rgba(255, 120, 120, 0.4); }
+    .btn.restart { border-color: rgba(255, 211, 89, 0.4); }
+    .logs {
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      background: rgba(5,9,15,0.72);
+      overflow: hidden;
+    }
+    .logs-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      font-size: 13px;
+      color: #bcc7e2;
+    }
+    .logs-body {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      max-height: 360px;
+      overflow: auto;
+      padding: 10px 12px;
+      white-space: pre-wrap;
+      color: #c7d2ef;
+    }
+    .footer {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #8fa0c7;
+    }
+    .toolbox {
+      margin-top: 14px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      background: rgba(7,10,16,0.76);
+      padding: 12px;
+    }
+    .toolbox-title {
+      font-size: 13px;
+      color: #bed0f3;
+      margin-bottom: 10px;
+    }
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .tool-btn {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.04);
+      color: #dbe6ff;
+      min-height: 40px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .tool-btn:hover { background: rgba(255,255,255,0.08); }
+    .report {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      background: rgba(4,7,12,0.72);
+      padding: 10px;
+      min-height: 140px;
+      max-height: 260px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #c8d5f3;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .manager-page {
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      background: rgba(7,10,16,0.78);
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+    .manager-title { font-size: 30px; font-weight: 700; margin-bottom: 6px; }
+    .manager-sub { color: #9fb3d9; font-size: 13px; margin-bottom: 12px; }
+    .hero {
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .hero-main { font-size: 18px; font-weight: 700; }
+    .hero-meta { color: #9fb3d9; font-size: 12px; }
+    .provider-card {
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .provider-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .provider-name { font-size: 20px; font-weight: 600; }
+    .model-pill {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.04);
+      padding: 10px;
+      font-size: 16px;
+    }
+    .model-pill-btn {
+      width: 100%;
+      text-align: left;
+      color: #e8edf8;
+      cursor: pointer;
+    }
+    .model-pill-btn.active {
+      border-color: rgba(255,98,88,0.7);
+      box-shadow: inset 0 0 0 1px rgba(255,98,88,0.3);
+      background: rgba(255,98,88,0.12);
+    }
+    .inline-note { font-size: 12px; color: #9fb3d9; margin-top: 4px; }
+    .channel-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 12px;
+    }
+    .channel-list { display: grid; gap: 8px; }
+    .channel-item {
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      padding: 12px;
+      cursor: pointer;
+    }
+    .channel-item.active {
+      border-color: rgba(255,98,88,0.7);
+      box-shadow: inset 0 0 0 1px rgba(255,98,88,0.3);
+    }
+    .channel-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .channel-state { color: #9fb3d9; font-size: 12px; }
+    .channel-form {
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      padding: 12px;
+    }
+    .field { margin-bottom: 10px; }
+    .field label { display: block; font-size: 12px; color: #9fb3d9; margin-bottom: 4px; }
+    .field input, .field select {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.04);
+      color: #e8edf8;
+      padding: 9px 10px;
+      font-size: 14px;
+    }
+    .form-actions { display: flex; gap: 10px; margin-top: 6px; }
+    .mini-btn {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.06);
+      color: #e8edf8;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .mini-btn.primary {
+      border-color: rgba(255,98,88,0.7);
+      background: rgba(255,98,88,0.14);
+    }
+
+    /* 2026 refresh: minimalist + modern */
+    :root {
+      --bg-0: #060a12;
+      --bg-1: #0b1220;
+      --bg-2: #121a2a;
+      --line: rgba(181, 205, 255, 0.16);
+      --line-strong: rgba(181, 205, 255, 0.28);
+      --text-0: #ecf3ff;
+      --text-1: #9fb4d9;
+      --brand: #79a8ff;
+      --ok: #43d898;
+      --danger: #ff6d72;
+      --warn: #ffcb66;
+    }
+
+    body {
+      font-family: "Avenir Next", "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(900px 560px at -8% -10%, rgba(81, 129, 255, 0.20) 0%, transparent 44%),
+        radial-gradient(780px 520px at 112% 4%, rgba(54, 221, 196, 0.13) 0%, transparent 46%),
+        linear-gradient(180deg, #070d18 0%, #060a12 100%);
+      color: var(--text-0);
+    }
+
+    .layout {
+      grid-template-columns: 236px 1fr;
+      gap: 0;
+    }
+
+    .sidebar {
+      background: linear-gradient(180deg, rgba(10, 15, 28, 0.92), rgba(6, 10, 18, 0.94));
+      border-right: 1px solid var(--line);
+      padding: 18px 14px;
+      backdrop-filter: blur(8px);
+    }
+
+    .brand {
+      font-size: 22px;
+      letter-spacing: 0.01em;
+      margin-bottom: 22px;
+      line-height: 1.1;
+    }
+
+    .nav-item {
+      font-size: 16px;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      border: 1px solid transparent;
+      color: #c4d6f6;
+      padding: 11px 13px;
+    }
+
+    .nav-item:hover {
+      background: rgba(121, 168, 255, 0.09);
+      border-color: rgba(121, 168, 255, 0.28);
+      color: #f0f6ff;
+    }
+
+    .nav-item.active {
+      background: linear-gradient(180deg, rgba(121, 168, 255, 0.22), rgba(121, 168, 255, 0.08));
+      border-color: rgba(121, 168, 255, 0.42);
+      box-shadow: 0 8px 22px rgba(31, 71, 151, 0.24);
+    }
+
+    .main {
+      padding: 18px 22px 24px;
+    }
+
+    .topbar {
+      margin-bottom: 16px;
+    }
+
+    .title {
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .status {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 7px 12px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+    }
+    .status.running { color: var(--ok); border-color: rgba(67,216,152,0.45); background: rgba(67,216,152,0.12); }
+    .status.stopped { color: var(--danger); border-color: rgba(255,109,114,0.45); background: rgba(255,109,114,0.12); }
+
+    .cards,
+    .actions {
+      gap: 14px;
+    }
+
+    .card,
+    .logs,
+    .toolbox,
+    .manager-page,
+    .channel-form,
+    .provider-card {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border-radius: 16px;
+      backdrop-filter: blur(6px);
+    }
+
+    .card {
+      padding: 15px;
+      min-height: 106px;
+    }
+
+    .k {
+      color: var(--text-1);
+      font-size: 13px;
+    }
+
+    .v {
+      font-size: 38px;
+      line-height: 1.06;
+      font-weight: 700;
+    }
+    .v.small {
+      font-size: 30px;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      min-height: 94px;
+      font-size: 22px;
+      letter-spacing: 0.01em;
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      border-color: var(--line-strong);
+      box-shadow: 0 10px 22px rgba(0,0,0,0.26);
+    }
+    .btn.start { border-color: rgba(67,216,152,0.45); }
+    .btn.stop { border-color: rgba(255,109,114,0.45); }
+    .btn.restart { border-color: rgba(255,203,102,0.45); }
+
+    .logs-head,
+    .toolbox-title,
+    .footer,
+    .hero-meta,
+    .inline-note,
+    .channel-state,
+    .field label {
+      color: var(--text-1);
+    }
+
+    .logs-body,
+    .report {
+      border-top: 1px solid rgba(181, 205, 255, 0.10);
+      font-size: 13px;
+      line-height: 1.55;
+      padding: 14px 16px;
+      max-height: 360px;
+      color: #dde8ff;
+    }
+
+    .tool-grid {
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .tool-btn {
+      min-height: 46px;
+      font-size: 14px;
+      border-radius: 11px;
+      border: 1px solid var(--line);
+    }
+    .tool-btn:hover {
+      border-color: var(--line-strong);
+      background: rgba(121,168,255,0.10);
+    }
+
+    .manager-title {
+      font-size: 34px;
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+    .manager-sub {
+      font-size: 14px;
+      margin-bottom: 14px;
+    }
+    .hero-main { font-size: 24px; }
+    .provider-name { font-size: 22px; }
+
+    .model-pill,
+    .channel-item,
+    .field input,
+    .field select,
+    .mini-btn {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .channel-item.active,
+    .model-pill-btn.active {
+      border-color: rgba(121,168,255,0.52);
+      box-shadow: inset 0 0 0 1px rgba(121,168,255,0.22);
+      background: rgba(121,168,255,0.10);
+    }
+
+    .mini-btn.primary {
+      border-color: rgba(121,168,255,0.48);
+      background: rgba(121,168,255,0.16);
+    }
+
+    @media (max-width: 1200px) {
+      .layout { grid-template-columns: 200px 1fr; }
+      .cards, .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .channel-layout { grid-template-columns: 1fr; }
+      .title { font-size: 34px; }
+      .v { font-size: 34px; }
+      .btn { font-size: 20px; min-height: 80px; }
+      .logs-body, .report { font-size: 14px; }
+    }
+    /* Community-inspired refresh (Dribbble/Behance-style clean dashboard) */
+    :root {
+      --c-bg: #f4f7fc;
+      --c-panel: #ffffff;
+      --c-border: #dde5f1;
+      --c-text: #1d2c48;
+      --c-muted: #6f83a8;
+      --c-accent: #3d7bff;
+    }
+
+    body {
+      font-family: "Plus Jakarta Sans", "SF Pro Text", "PingFang SC", sans-serif;
+      color: var(--c-text);
+      background:
+        radial-gradient(720px 380px at 90% -12%, rgba(114, 177, 255, 0.18), transparent 58%),
+        radial-gradient(540px 320px at -8% -12%, rgba(255, 199, 132, 0.16), transparent 56%),
+        var(--c-bg);
+    }
+
+    .layout { grid-template-columns: 246px 1fr; }
+
+    .sidebar {
+      background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+      border-right: 1px solid var(--c-border);
+      padding: 20px 14px;
+      backdrop-filter: none;
+    }
+
+    .brand {
+      font-size: 22px;
+      color: #182846;
+      margin: 2px 4px 20px;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-item {
+      font-size: 15px;
+      border-radius: 12px;
+      padding: 11px 13px;
+      color: #4f648b;
+      border: 1px solid transparent;
+      background: transparent;
+    }
+
+    .nav-item:hover {
+      background: #eef4ff;
+      border-color: #d5e1f3;
+      color: #1f4f9d;
+    }
+
+    .nav-item.active {
+      background: linear-gradient(180deg, #e7f1ff 0%, #dce9ff 100%);
+      border-color: #b8caea;
+      color: #1f4d95;
+      box-shadow: 0 10px 18px rgba(37, 84, 163, 0.14);
+    }
+
+    .main { background: transparent; padding: 22px; }
+
+    .title {
+      font-size: 34px;
+      color: #1a2c4b;
+      letter-spacing: -0.02em;
+    }
+
+    .status {
+      border: 1px solid #d4deee;
+      background: #fff;
+      color: #5f769e;
+      font-size: 12px;
+      padding: 8px 12px;
+    }
+    .status.running { color: #0b8c61; border-color: #93dabc; background: #eafaf3; }
+    .status.stopped { color: #bc3d46; border-color: #efbcc0; background: #fff2f3; }
+
+    .card,
+    .logs,
+    .toolbox,
+    .manager-page,
+    .channel-form,
+    .provider-card,
+    .hero {
+      background: var(--c-panel);
+      border: 1px solid var(--c-border);
+      box-shadow: 0 12px 26px rgba(40, 66, 116, 0.06);
+      border-radius: 14px;
+      backdrop-filter: none;
+    }
+
+    .card { min-height: 98px; padding: 14px; }
+
+    .k {
+      color: var(--c-muted);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .v { color: #1b2d4b; font-size: 32px; font-weight: 700; }
+    .v.small { font-size: 28px; }
+
+    .btn {
+      border: 1px solid #cfdbef;
+      border-radius: 12px;
+      min-height: 84px;
+      font-size: 20px;
+      font-weight: 600;
+      color: #20395f;
+      background: #ffffff;
+      letter-spacing: 0;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      border-color: #afc4e5;
+      background: #f3f8ff;
+      box-shadow: 0 10px 18px rgba(40, 68, 120, 0.10);
+    }
+    .btn.start { border-color: #90d9bc; }
+    .btn.stop { border-color: #eeb2b7; }
+    .btn.restart { border-color: #efd493; }
+    .btn:disabled,
+    .btn.runtime-disabled {
+      opacity: 1 !important;
+      color: #8ea2c0 !important;
+      border-color: #dfe7f3 !important;
+      background: #f4f7fb !important;
+      box-shadow: none !important;
+      cursor: not-allowed !important;
+      transform: none !important;
+    }
+    .btn.runtime-disabled:hover,
+    .btn:disabled:hover {
+      transform: none !important;
+      border-color: #dfe7f3 !important;
+      background: #f4f7fb !important;
+    }
+
+    .logs-head {
+      background: #f8fbff;
+      border-bottom: 1px solid #e8edf5;
+      color: var(--c-muted);
+    }
+
+    .logs-body,
+    .report {
+      color: #264066;
+      font-size: 13px;
+      line-height: 1.55;
+      max-height: 320px;
+      padding: 12px 14px;
+      border-top: 0;
+    }
+
+    .report {
+      background: #f7fbff !important;
+      border: 1px solid #d6e2f3 !important;
+      color: #1f3b63 !important;
+    }
+
+    .toolbox-title,
+    .footer,
+    .hero-meta,
+    .inline-note,
+    .channel-state,
+    .field label,
+    .manager-sub { color: var(--c-muted); }
+
+    .tool-btn,
+    .mini-btn,
+    .model-pill,
+    .channel-item,
+    .field input,
+    .field select {
+      background: #fbfdff;
+      border: 1px solid #d8e2f2;
+      color: #22406b;
+      border-radius: 10px;
+    }
+
+    .tool-btn:hover,
+    .mini-btn:hover,
+    .model-pill:hover,
+    .channel-item:hover {
+      background: #eef5ff;
+      border-color: #b7cbed;
+    }
+
+    .tool-btn.runtime-disabled {
+      background: #f3f6fb !important;
+      border-color: #e0e8f4 !important;
+      color: #93a5c2 !important;
+    }
+
+    .channel-item.active,
+    .model-pill-btn.active {
+      background: #eaf3ff;
+      border-color: #9ab8e8;
+      box-shadow: inset 0 0 0 1px #b8cff0;
+    }
+
+    .mini-btn.primary {
+      background: #e8f2ff;
+      border-color: #95b5ea;
+      color: #1f519f;
+    }
+
+    .manager-title {
+      font-size: 32px;
+      color: #1a2c4b;
+      letter-spacing: -0.02em;
+    }
+    .hero-main { font-size: 22px; color: #1f3a63; }
+    .provider-name { font-size: 19px; color: #243f68; }
+
+    @media (max-width: 1200px) {
+      .layout { grid-template-columns: 205px 1fr; }
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .channel-layout { grid-template-columns: 1fr; }
+      .title { font-size: 30px; }
+      .v { font-size: 28px; }
+      .v.small { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand" id="brandTitle">闪电⚡️ 孵化中心</div>
+      <div class="nav-item active" data-target="sec-overview" id="navOverview">概览</div>
+      <div class="nav-item" data-target="sec-service" id="navService">服务状态</div>
+      <div class="nav-item" id="navAiSettings">AI 配置</div>
+      <div class="nav-item" id="navOpenDashboard">打开孵化器</div>
+      <div class="nav-item" id="navChannels">消息渠道</div>
+      <div class="nav-item" data-target="sec-logs" id="navLogs">实时日志</div>
+    </aside>
+    <main class="main">
+      <div class="topbar" id="sec-overview">
+        <div class="title" id="pageTitle">孵化控制台</div>
+        <div class="topbar-right">
+          <select id="langSelect" class="lang-select">
+            <option value="zh-CN">简体中文</option>
+            <option value="en-US">English</option>
+          </select>
+          <div id="serviceStatus" class="status">检测中...</div>
+        </div>
+      </div>
+
+      <section id="sec-ai-config" class="manager-page hidden">
+        <div class="manager-title" id="aiTitle">AI 模型配置</div>
+        <div class="manager-sub" id="aiSub">管理 OpenClaw 使用的 AI Provider 和模型</div>
+        <div class="hero">
+          <div>
+            <div class="hero-meta" id="currentModelLabel">当前主模型</div>
+            <div class="hero-main" id="currentModelDisplay">minimax-custom/minimax-m2.1</div>
+          </div>
+          <div class="hero-meta" id="providerStats">2 个 Provider · 4 个可用模型</div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-top">
+            <div class="provider-name">claude-cli</div>
+            <div class="hero-meta" id="claudeModelCount">1 模型</div>
+          </div>
+          <button class="model-pill model-pill-btn" data-model="claude-cli/opus-4.6">Claude Opus 4.6</button>
+        </div>
+        <div class="provider-card">
+          <div class="provider-top">
+            <div class="provider-name">minimax-custom</div>
+            <div class="hero-meta" id="minimaxModelCount">1 模型</div>
+          </div>
+          <button class="model-pill model-pill-btn" data-model="minimax-custom/minimax-m2.1">MiniMax M2.1</button>
+        </div>
+        <div class="inline-note" id="aiStateNote">点击模型即可切换主模型（本地保存）</div>
+      </section>
+
+      <section id="sec-channels" class="manager-page hidden">
+        <div class="manager-title" id="channelsTitle">消息渠道</div>
+        <div class="manager-sub" id="channelsSub">配置飞书等渠道的接入参数</div>
+        <div class="channel-layout">
+          <div class="channel-list">
+            <div class="channel-item" data-channel="telegram"><div class="channel-name">Telegram</div><div class="channel-state">未配置</div></div>
+            <div class="channel-item" data-channel="discord"><div class="channel-name">Discord</div><div class="channel-state">未配置</div></div>
+            <div class="channel-item" data-channel="slack"><div class="channel-name">Slack</div><div class="channel-state">未配置</div></div>
+            <div class="channel-item active" data-channel="feishu"><div class="channel-name">飞书</div><div class="channel-state">已配置</div></div>
+            <div class="channel-item" data-channel="whatsapp"><div class="channel-name">WhatsApp</div><div class="channel-state">未配置</div></div>
+          </div>
+          <div class="channel-form">
+            <div class="field"><label>App ID</label><input id="chAppId" value="cli_a92e1ebb57f8dbc4" /></div>
+            <div class="field"><label>App Secret</label><input id="chAppSecret" value="************************" /></div>
+            <div class="field"><label id="chatIdLabel">测试 Chat ID</label><input id="chChatId" placeholder="用于发送测试消息的群聊/用户 ID（可选）" /></div>
+            <div class="field"><label id="modeLabel">连接模式</label><select id="chMode"><option value="ws">WebSocket (推荐)</option><option value="http">HTTP 回调</option></select></div>
+            <div class="field"><label id="regionLabel">部署区域</label><select id="chRegion"><option value="cn">国内 (feishu.cn)</option><option value="intl">国际 (larksuite.com)</option></select></div>
+            <div class="form-actions">
+              <button id="btnSaveChannel" class="mini-btn primary">保存配置</button>
+              <button id="btnTestChannel" class="mini-btn">测试连通</button>
+            </div>
+            <div class="inline-note" id="channelStateNote">当前渠道：飞书</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-service">
+        <div class="cards">
+          <div class="card"><div class="k" id="kPort">端口</div><div id="port" class="v small">--</div></div>
+          <div class="card"><div class="k" id="kPid">进程 ID</div><div id="pid" class="v small">--</div></div>
+          <div class="card"><div class="k" id="kUptime">运行时间</div><div id="uptime" class="v small">--</div></div>
+          <div class="card"><div class="k" id="kRequests">请求总数</div><div id="requests" class="v">0</div></div>
+        </div>
+      </section>
+      <section class="actions" id="sec-actions">
+        <button id="btnStart" class="btn start">启动</button>
+        <button id="btnStop" class="btn stop">停止</button>
+        <button id="btnRestart" class="btn restart">重启</button>
+        <button id="btnDiag" class="btn">诊断</button>
+      </section>
+
+      <section class="logs" id="sec-logs">
+        <div class="logs-head">
+          <span id="logsTitle">实时日志（50 行）</span>
+          <span id="refreshLabel">自动刷新中</span>
+        </div>
+        <div id="logs" class="logs-body">正在加载...</div>
+      </section>
+
+      <section class="toolbox" id="sec-tools">
+        <div class="toolbox-title" id="toolboxTitle">孵化工具全集</div>
+        <div class="tool-grid">
+          <button class="tool-btn" id="btnViewLogs">查看日志</button>
+          <button class="tool-btn" id="btnSessionStatus">会话状态</button>
+          <button class="tool-btn" id="btnSessionClear">清理会话</button>
+          <button class="tool-btn" id="btnSessionDiag">会话诊断</button>
+          <button class="tool-btn" id="btnDiagFull">完整诊断</button>
+          <button class="tool-btn" id="btnRecentErrors">最近错误</button>
+          <button class="tool-btn" id="btnRecentReqs">最近请求</button>
+          <button class="tool-btn" id="btnGwHealth">健康检查</button>
+          <button class="tool-btn" id="btnOpenPanel">打开孵化台</button>
+        </div>
+        <div class="report" id="report">工具输出将在这里显示...</div>
+      </section>
+
+      <div class="footer" id="meta">--</div>
+    </main>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('serviceStatus');
+    const portEl = document.getElementById('port');
+    const pidEl = document.getElementById('pid');
+    const uptimeEl = document.getElementById('uptime');
+    const requestsEl = document.getElementById('requests');
+    const logsEl = document.getElementById('logs');
+    const metaEl = document.getElementById('meta');
+    const refreshLabel = document.getElementById('refreshLabel');
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+    const btnRestart = document.getElementById('btnRestart');
+    const btnDiag = document.getElementById('btnDiag');
+    const navAiSettings = document.getElementById('navAiSettings');
+    const navOpenDashboard = document.getElementById('navOpenDashboard');
+    const navChannels = document.getElementById('navChannels');
+    const topbarEl = document.getElementById('sec-overview');
+    const serviceEl = document.getElementById('sec-service');
+    const actionsEl = document.getElementById('sec-actions');
+    const logsSectionEl = document.getElementById('sec-logs');
+    const toolsEl = document.getElementById('sec-tools');
+    const aiConfigEl = document.getElementById('sec-ai-config');
+    const channelsEl = document.getElementById('sec-channels');
+    const currentModelDisplayEl = document.getElementById('currentModelDisplay');
+    const aiStateNoteEl = document.getElementById('aiStateNote');
+    const modelButtons = [...document.querySelectorAll('.model-pill-btn')];
+    const channelItems = [...document.querySelectorAll('.channel-item[data-channel]')];
+    const chAppIdEl = document.getElementById('chAppId');
+    const chAppSecretEl = document.getElementById('chAppSecret');
+    const chChatIdEl = document.getElementById('chChatId');
+    const chModeEl = document.getElementById('chMode');
+    const chRegionEl = document.getElementById('chRegion');
+    const btnSaveChannel = document.getElementById('btnSaveChannel');
+    const btnTestChannel = document.getElementById('btnTestChannel');
+    const channelStateNoteEl = document.getElementById('channelStateNote');
+    const reportEl = document.getElementById('report');
+    const btnViewLogs = document.getElementById('btnViewLogs');
+    const btnSessionStatus = document.getElementById('btnSessionStatus');
+    const btnSessionClear = document.getElementById('btnSessionClear');
+    const btnSessionDiag = document.getElementById('btnSessionDiag');
+    const btnDiagFull = document.getElementById('btnDiagFull');
+    const btnRecentErrors = document.getElementById('btnRecentErrors');
+    const btnRecentReqs = document.getElementById('btnRecentReqs');
+    const btnGwHealth = document.getElementById('btnGwHealth');
+    const btnOpenPanel = document.getElementById('btnOpenPanel');
+    const langSelect = document.getElementById('langSelect');
+    const brandTitle = document.getElementById('brandTitle');
+    const navOverview = document.getElementById('navOverview');
+    const navService = document.getElementById('navService');
+    const navLogs = document.getElementById('navLogs');
+    const pageTitle = document.getElementById('pageTitle');
+    const aiTitle = document.getElementById('aiTitle');
+    const aiSub = document.getElementById('aiSub');
+    const currentModelLabel = document.getElementById('currentModelLabel');
+    const providerStats = document.getElementById('providerStats');
+    const claudeModelCount = document.getElementById('claudeModelCount');
+    const minimaxModelCount = document.getElementById('minimaxModelCount');
+    const channelsTitle = document.getElementById('channelsTitle');
+    const channelsSub = document.getElementById('channelsSub');
+    const chatIdLabel = document.getElementById('chatIdLabel');
+    const modeLabel = document.getElementById('modeLabel');
+    const regionLabel = document.getElementById('regionLabel');
+    const kPort = document.getElementById('kPort');
+    const kPid = document.getElementById('kPid');
+    const kUptime = document.getElementById('kUptime');
+    const kRequests = document.getElementById('kRequests');
+    const logsTitle = document.getElementById('logsTitle');
+    const toolboxTitle = document.getElementById('toolboxTitle');
+
+    let busy = false;
+    let selectedChannel = 'feishu';
+    let channelsState = {};
+    let primaryModel = 'minimax-custom/minimax-m2.1';
+    let uiLanguage = 'zh-CN';
+
+    const I18N = {
+      'zh-CN': {
+        windowTitle: '孵化控制台',
+        brandTitle: '闪电⚡️ 孵化中心',
+        navOverview: '概览',
+        navService: '服务状态',
+        navAiSettings: 'AI 配置',
+        navOpenDashboard: '打开孵化器',
+        navChannels: '消息渠道',
+        navLogs: '实时日志',
+        pageTitle: '孵化控制台',
+        statusChecking: '检测中...',
+        statusRunning: '运行中',
+        statusStopped: '已停止',
+        aiTitle: 'AI 模型配置',
+        aiSub: '管理 OpenClaw 使用的 AI Provider 和模型',
+        currentModelLabel: '当前主模型',
+        providerStats: '2 个 Provider · 4 个可用模型',
+        modelCount: '1 模型',
+        aiStateNote: '点击模型即可切换主模型（本地保存）',
+        aiStateCurrent: '主模型已设置为：{model}',
+        primaryTag: '（主模型）',
+        channelsTitle: '消息渠道',
+        channelsSub: '配置飞书等渠道的接入参数',
+        chatIdLabel: '测试 Chat ID',
+        chatIdPlaceholder: '用于发送测试消息的群聊/用户 ID（可选）',
+        modeLabel: '连接模式',
+        modeWs: 'WebSocket (推荐)',
+        modeHttp: 'HTTP 回调',
+        regionLabel: '部署区域',
+        regionCn: '国内 (feishu.cn)',
+        regionIntl: '国际 (larksuite.com)',
+        saveConfig: '保存配置',
+        testConnect: '测试连通',
+        currentChannel: '当前渠道：{name}',
+        configured: '已配置',
+        unconfigured: '未配置',
+        kPort: '端口',
+        kPid: '进程 ID',
+        kUptime: '运行时间',
+        kRequests: '请求总数',
+        start: '启动',
+        stop: '停止',
+        restart: '重启',
+        diagnose: '诊断',
+        logsTitle: '实时日志（50 行）',
+        logsLoading: '正在加载...',
+        logsEmpty: '暂无日志',
+        refreshAuto: '自动刷新中',
+        actionRunning: '{action}中...',
+        actionFailed: '操作失败: {error}',
+        actionSuccess: '操作成功',
+        actionException: '操作异常: {error}',
+        metaLine: '连接: {conn} · 会话: {sessions} · 上下文: {ctx}%',
+        connOk: '正常',
+        connDown: '断开',
+        loadFailed: '加载失败: {error}',
+        toolboxTitle: '孵化工具全集',
+        viewLogs: '查看日志',
+        sessionStatus: '会话状态',
+        sessionClear: '清理会话',
+        sessionDiag: '会话诊断',
+        diagFull: '完整诊断',
+        recentErrors: '最近错误',
+        recentReqs: '最近请求',
+        gwHealth: 'Gateway 健康检查',
+        openPanel: '打开孵化台',
+        reportPlaceholder: '工具输出将在这里显示...',
+        reportSaveChannelTitle: '消息渠道',
+        reportSaveChannelBody: '已保存 {channel} 配置',
+        reportTestTitle: '消息渠道测试',
+        reportNeedCreds: '请先填写并保存 App ID / App Secret',
+        reportReady: '{channel} 连接参数已就绪，可进行网关测试。',
+        reportOpenDashTitle: '打开孵化器',
+        reportOpenDashBody: '已尝试打开本地孵化台。',
+        runFailed: '执行失败: {error}',
+        runException: '执行异常: {error}',
+        unknownError: '未知错误'
+      },
+      'en-US': {
+        windowTitle: 'Incubator Console',
+        brandTitle: 'Lightning ⚡ Hatch Center',
+        navOverview: 'Overview',
+        navService: 'Service',
+        navAiSettings: 'AI Config',
+        navOpenDashboard: 'Open Dashboard',
+        navChannels: 'Channels',
+        navLogs: 'Live Logs',
+        pageTitle: 'Incubator Console',
+        statusChecking: 'Checking...',
+        statusRunning: 'Running',
+        statusStopped: 'Stopped',
+        aiTitle: 'AI Model Configuration',
+        aiSub: 'Manage OpenClaw providers and models',
+        currentModelLabel: 'Current Primary Model',
+        providerStats: '2 providers · 4 models',
+        modelCount: '1 model',
+        aiStateNote: 'Click a model to set it as primary (saved locally)',
+        aiStateCurrent: 'Primary model set to: {model}',
+        primaryTag: ' (Primary)',
+        channelsTitle: 'Channels',
+        channelsSub: 'Configure channel connection parameters',
+        chatIdLabel: 'Test Chat ID',
+        chatIdPlaceholder: 'Group/User ID used for test messages (optional)',
+        modeLabel: 'Connection Mode',
+        modeWs: 'WebSocket (Recommended)',
+        modeHttp: 'HTTP Callback',
+        regionLabel: 'Region',
+        regionCn: 'China (feishu.cn)',
+        regionIntl: 'Global (larksuite.com)',
+        saveConfig: 'Save',
+        testConnect: 'Test',
+        currentChannel: 'Current channel: {name}',
+        configured: 'Configured',
+        unconfigured: 'Not configured',
+        kPort: 'Port',
+        kPid: 'Process ID',
+        kUptime: 'Uptime',
+        kRequests: 'Requests',
+        start: 'Start',
+        stop: 'Stop',
+        restart: 'Restart',
+        diagnose: 'Diagnose',
+        logsTitle: 'Live Logs (50 lines)',
+        logsLoading: 'Loading...',
+        logsEmpty: 'No logs',
+        refreshAuto: 'Auto refreshing',
+        actionRunning: '{action}...',
+        actionFailed: 'Action failed: {error}',
+        actionSuccess: 'Action completed',
+        actionException: 'Action exception: {error}',
+        metaLine: 'Connection: {conn} · Sessions: {sessions} · Context: {ctx}%',
+        connOk: 'OK',
+        connDown: 'Disconnected',
+        loadFailed: 'Load failed: {error}',
+        toolboxTitle: 'Toolbox',
+        viewLogs: 'View Logs',
+        sessionStatus: 'Session Status',
+        sessionClear: 'Clear Session',
+        sessionDiag: 'Session Diagnose',
+        diagFull: 'Full Diagnose',
+        recentErrors: 'Recent Errors',
+        recentReqs: 'Recent Requests',
+        gwHealth: 'Gateway Health',
+        openPanel: 'Open Dashboard',
+        reportPlaceholder: 'Tool output will appear here...',
+        reportSaveChannelTitle: 'Channel',
+        reportSaveChannelBody: 'Saved configuration for {channel}',
+        reportTestTitle: 'Channel Test',
+        reportNeedCreds: 'Please fill and save App ID / App Secret first',
+        reportReady: '{channel} parameters are ready for gateway testing.',
+        reportOpenDashTitle: 'Open Dashboard',
+        reportOpenDashBody: 'Tried to open local dashboard.',
+        runFailed: 'Execution failed: {error}',
+        runException: 'Execution error: {error}',
+        unknownError: 'Unknown error'
+      }
+    };
+
+    const CHANNEL_NAMES = {
+      feishu: { 'zh-CN': '飞书', 'en-US': 'Feishu' },
+      telegram: { 'zh-CN': 'Telegram', 'en-US': 'Telegram' },
+      discord: { 'zh-CN': 'Discord', 'en-US': 'Discord' },
+      slack: { 'zh-CN': 'Slack', 'en-US': 'Slack' },
+      whatsapp: { 'zh-CN': 'WhatsApp', 'en-US': 'WhatsApp' }
+    };
+
+    function normalizeLang(lang) {
+      if (!lang || typeof lang !== 'string') return 'zh-CN';
+      if (lang === 'zh-CN' || lang === 'en-US') return lang;
+      return lang.toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN';
+    }
+
+    function t(key, vars = {}) {
+      const dict = I18N[uiLanguage] || I18N['zh-CN'];
+      let text = dict[key] || I18N['zh-CN'][key] || key;
+      for (const [k, v] of Object.entries(vars)) text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+      return text;
+    }
+
+    function channelLabel(channel) {
+      return CHANNEL_NAMES[channel]?.[uiLanguage] || channel;
+    }
+
+    function normalizeMode(value) {
+      if (value === 'HTTP 回调' || value === 'http') return 'http';
+      return 'ws';
+    }
+
+    function normalizeRegion(value) {
+      if (value === '国际 (larksuite.com)' || value === 'intl') return 'intl';
+      return 'cn';
+    }
+
+    function applyI18n() {
+      document.documentElement.lang = uiLanguage === 'en-US' ? 'en' : 'zh-CN';
+      document.title = t('windowTitle');
+      if (langSelect) langSelect.value = uiLanguage;
+      if (brandTitle) brandTitle.textContent = t('brandTitle');
+      if (navOverview) navOverview.textContent = t('navOverview');
+      if (navService) navService.textContent = t('navService');
+      if (navAiSettings) navAiSettings.textContent = t('navAiSettings');
+      if (navOpenDashboard) navOpenDashboard.textContent = t('navOpenDashboard');
+      if (navChannels) navChannels.textContent = t('navChannels');
+      if (navLogs) navLogs.textContent = t('navLogs');
+      if (pageTitle) pageTitle.textContent = t('pageTitle');
+      if (aiTitle) aiTitle.textContent = t('aiTitle');
+      if (aiSub) aiSub.textContent = t('aiSub');
+      if (currentModelLabel) currentModelLabel.textContent = t('currentModelLabel');
+      if (providerStats) providerStats.textContent = t('providerStats');
+      if (claudeModelCount) claudeModelCount.textContent = t('modelCount');
+      if (minimaxModelCount) minimaxModelCount.textContent = t('modelCount');
+      if (channelsTitle) channelsTitle.textContent = t('channelsTitle');
+      if (channelsSub) channelsSub.textContent = t('channelsSub');
+      if (chatIdLabel) chatIdLabel.textContent = t('chatIdLabel');
+      if (modeLabel) modeLabel.textContent = t('modeLabel');
+      if (regionLabel) regionLabel.textContent = t('regionLabel');
+      if (kPort) kPort.textContent = t('kPort');
+      if (kPid) kPid.textContent = t('kPid');
+      if (kUptime) kUptime.textContent = t('kUptime');
+      if (kRequests) kRequests.textContent = t('kRequests');
+      if (btnStart) btnStart.textContent = t('start');
+      if (btnStop) btnStop.textContent = t('stop');
+      if (btnRestart) btnRestart.textContent = t('restart');
+      if (btnDiag) btnDiag.textContent = t('diagnose');
+      if (logsTitle) logsTitle.textContent = t('logsTitle');
+      if (toolboxTitle) toolboxTitle.textContent = t('toolboxTitle');
+      if (btnViewLogs) btnViewLogs.textContent = t('viewLogs');
+      if (btnSessionStatus) btnSessionStatus.textContent = t('sessionStatus');
+      if (btnSessionClear) btnSessionClear.textContent = t('sessionClear');
+      if (btnSessionDiag) btnSessionDiag.textContent = t('sessionDiag');
+      if (btnDiagFull) btnDiagFull.textContent = t('diagFull');
+      if (btnRecentErrors) btnRecentErrors.textContent = t('recentErrors');
+      if (btnRecentReqs) btnRecentReqs.textContent = t('recentReqs');
+      if (btnGwHealth) btnGwHealth.textContent = t('gwHealth');
+      if (btnOpenPanel) btnOpenPanel.textContent = t('openPanel');
+      if (btnSaveChannel) btnSaveChannel.textContent = t('saveConfig');
+      if (btnTestChannel) btnTestChannel.textContent = t('testConnect');
+      if (refreshLabel && refreshLabel.textContent === '自动刷新中') refreshLabel.textContent = t('refreshAuto');
+      if (logsEl && logsEl.textContent === '正在加载...') logsEl.textContent = t('logsLoading');
+      if (reportEl && reportEl.textContent === '工具输出将在这里显示...') reportEl.textContent = t('reportPlaceholder');
+      if (chChatIdEl) chChatIdEl.placeholder = t('chatIdPlaceholder');
+      if (chModeEl) {
+        const current = normalizeMode(chModeEl.value);
+        const opts = chModeEl.querySelectorAll('option');
+        if (opts[0]) opts[0].textContent = t('modeWs');
+        if (opts[1]) opts[1].textContent = t('modeHttp');
+        chModeEl.value = current;
+      }
+      if (chRegionEl) {
+        const current = normalizeRegion(chRegionEl.value);
+        const opts = chRegionEl.querySelectorAll('option');
+        if (opts[0]) opts[0].textContent = t('regionCn');
+        if (opts[1]) opts[1].textContent = t('regionIntl');
+        chRegionEl.value = current;
+      }
+      refreshAiUi();
+      refreshChannelListUi();
+      loadChannelToForm(selectedChannel);
+    }
+
+    async function initLanguage() {
+      try {
+        const appLang = await window.electronAPI.invoke('app-get-language');
+        uiLanguage = normalizeLang(appLang || uiLanguage);
+      } catch {}
+      applyI18n();
+      window.electronAPI.on('app-language-changed', (lang) => {
+        const next = normalizeLang(lang);
+        if (next === uiLanguage) return;
+        uiLanguage = next;
+        applyI18n();
+      });
+    }
+
+    function setBusy(flag) {
+      busy = flag;
+      [btnStart, btnStop, btnRestart, btnDiag].forEach((b) => { b.disabled = flag; });
+    }
+
+    function setRuntimeDisabled(btn, disabled) {
+      btn.disabled = !!disabled;
+      btn.classList.toggle('runtime-disabled', !!disabled);
+    }
+
+    function applyRuntimeButtonState(running) {
+      if (busy) return;
+      setRuntimeDisabled(btnStart, running);
+      setRuntimeDisabled(btnStop, !running);
+      setRuntimeDisabled(btnRestart, !running);
+      setRuntimeDisabled(btnDiag, false);
+    }
+
+    function formatLogLine(item) {
+      if (typeof item === 'string') return item;
+      const ts = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : '--:--:--';
+      const level = item.level || 'info';
+      const msg = item.message || JSON.stringify(item);
+      return `[${ts}] [${level}] ${msg}`;
+    }
+
+    async function refresh() {
+      try {
+        const data = await window.electronAPI.invoke('manager-overview');
+        const running = data.gateway.status === 'running';
+        statusEl.className = `status ${running ? 'running' : 'stopped'}`;
+        statusEl.textContent = running ? t('statusRunning') : t('statusStopped');
+        applyRuntimeButtonState(running);
+        portEl.textContent = String(data.gateway.port || '--');
+        pidEl.textContent = data.gateway.pid ? String(data.gateway.pid) : '--';
+        uptimeEl.textContent = data.gateway.uptime || '--';
+        requestsEl.textContent = String(data.diagnostics.requestsTotal || 0);
+        logsEl.textContent = (data.logs || []).map(formatLogLine).join('\n') || t('logsEmpty');
+        metaEl.textContent = t('metaLine', {
+          conn: data.connected ? t('connOk') : t('connDown'),
+          sessions: data.diagnostics.activeSessions || 0,
+          ctx: data.diagnostics.contextPercentage || 0
+        });
+      } catch (err) {
+        logsEl.textContent = t('loadFailed', { error: err.message });
+      }
+    }
+
+    async function runAction(action) {
+      if (busy) return;
+      setBusy(true);
+      refreshLabel.textContent = t('actionRunning', { action: t(action) });
+      try {
+        const ret = await window.electronAPI.invoke('manager-service-action', action);
+        if (!ret || !ret.success) {
+          refreshLabel.textContent = t('actionFailed', { error: ret?.error || t('unknownError') });
+        } else {
+          refreshLabel.textContent = t('actionSuccess');
+        }
+      } catch (err) {
+        refreshLabel.textContent = t('actionException', { error: err.message });
+      } finally {
+        await refresh();
+        setBusy(false);
+        setTimeout(() => { refreshLabel.textContent = t('refreshAuto'); }, 1200);
+      }
+    }
+
+    btnStart.addEventListener('click', () => runAction('start'));
+    btnStop.addEventListener('click', () => runAction('stop'));
+    btnRestart.addEventListener('click', () => runAction('restart'));
+    btnDiag.addEventListener('click', async () => {
+      await window.electronAPI.invoke('manager-open-diagnostics');
+    });
+
+    function setActiveNav(item) {
+      document.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'));
+      if (item) item.classList.add('active');
+    }
+
+    function loadPersistedState() {
+      try {
+        primaryModel = localStorage.getItem('eggclaw_primary_model') || primaryModel;
+      } catch {}
+
+      try {
+        channelsState = JSON.parse(localStorage.getItem('eggclaw_channels_state') || '{}');
+      } catch {
+        channelsState = {};
+      }
+    }
+
+    function persistState() {
+      try {
+        localStorage.setItem('eggclaw_primary_model', primaryModel);
+        localStorage.setItem('eggclaw_channels_state', JSON.stringify(channelsState));
+      } catch {}
+    }
+
+    function refreshAiUi() {
+      currentModelDisplayEl.textContent = primaryModel;
+      modelButtons.forEach((btn) => {
+        const active = btn.dataset.model === primaryModel;
+        btn.classList.toggle('active', active);
+        const tag = t('primaryTag');
+        btn.textContent = active ? `${btn.textContent.replace('（主模型）', '').replace(' (Primary)', '')}${tag}` : btn.textContent.replace('（主模型）', '').replace(' (Primary)', '');
+      });
+      aiStateNoteEl.textContent = t('aiStateCurrent', { model: primaryModel });
+    }
+
+    function refreshChannelListUi() {
+      channelItems.forEach((item) => {
+        const ch = item.dataset.channel;
+        item.classList.toggle('active', ch === selectedChannel);
+        const nameEl = item.querySelector('.channel-name');
+        if (nameEl) nameEl.textContent = channelLabel(ch);
+        const stateEl = item.querySelector('.channel-state');
+        if (!stateEl) return;
+        const cfg = channelsState[ch];
+        stateEl.textContent = cfg && cfg.appId ? t('configured') : t('unconfigured');
+      });
+    }
+
+    function loadChannelToForm(channel) {
+      const cfg = channelsState[channel] || {};
+      chAppIdEl.value = cfg.appId || (channel === 'feishu' ? 'cli_a92e1ebb57f8dbc4' : '');
+      chAppSecretEl.value = cfg.appSecret || '';
+      chChatIdEl.value = cfg.chatId || '';
+      chModeEl.value = normalizeMode(cfg.mode || 'ws');
+      chRegionEl.value = normalizeRegion(cfg.region || 'cn');
+      const name = channelLabel(channel);
+      channelStateNoteEl.textContent = t('currentChannel', { name });
+    }
+
+    function showAppPage(page) {
+      topbarEl.classList.add('hidden');
+      serviceEl.classList.add('hidden');
+      actionsEl.classList.add('hidden');
+      logsSectionEl.classList.add('hidden');
+      toolsEl.classList.add('hidden');
+      metaEl.classList.add('hidden');
+      aiConfigEl.classList.toggle('hidden', page !== 'ai');
+      channelsEl.classList.toggle('hidden', page !== 'channels');
+    }
+
+    function showMainView(targetId) {
+      aiConfigEl.classList.add('hidden');
+      channelsEl.classList.add('hidden');
+      topbarEl.classList.remove('hidden');
+      serviceEl.classList.remove('hidden');
+      actionsEl.classList.remove('hidden');
+      logsSectionEl.classList.remove('hidden');
+      toolsEl.classList.remove('hidden');
+      metaEl.classList.remove('hidden');
+      const target = document.getElementById(targetId);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    navAiSettings.addEventListener('click', async () => {
+      setActiveNav(navAiSettings);
+      showAppPage('ai');
+    });
+    navOpenDashboard.addEventListener('click', async () => {
+      await window.electronAPI.invoke('manager-open-dashboard');
+      showReport(t('reportOpenDashTitle'), t('reportOpenDashBody'));
+    });
+    navChannels.addEventListener('click', async () => {
+      setActiveNav(navChannels);
+      showAppPage('channels');
+    });
+
+    modelButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        primaryModel = btn.dataset.model;
+        persistState();
+        refreshAiUi();
+      });
+    });
+
+    channelItems.forEach((item) => {
+      item.addEventListener('click', () => {
+        selectedChannel = item.dataset.channel;
+        refreshChannelListUi();
+        loadChannelToForm(selectedChannel);
+      });
+    });
+
+    btnSaveChannel.addEventListener('click', () => {
+      channelsState[selectedChannel] = {
+        appId: chAppIdEl.value.trim(),
+        appSecret: chAppSecretEl.value.trim(),
+        chatId: chChatIdEl.value.trim(),
+        mode: normalizeMode(chModeEl.value),
+        region: normalizeRegion(chRegionEl.value)
+      };
+      persistState();
+      refreshChannelListUi();
+      showReport(t('reportSaveChannelTitle'), t('reportSaveChannelBody', { channel: channelLabel(selectedChannel) }));
+    });
+
+    btnTestChannel.addEventListener('click', () => {
+      const cfg = channelsState[selectedChannel] || {};
+      if (!cfg.appId || !cfg.appSecret) {
+        showReport(t('reportTestTitle'), t('reportNeedCreds'));
+        return;
+      }
+      showReport(t('reportTestTitle'), t('reportReady', { channel: channelLabel(selectedChannel) }));
+    });
+
+    function showReport(title, body) {
+      reportEl.textContent = `[${new Date().toLocaleTimeString()}] ${title}\n\n${body || '--'}`;
+      reportEl.scrollTop = 0;
+    }
+
+    async function runTool(label, channel) {
+      try {
+        const ret = await window.electronAPI.invoke(channel);
+        if (!ret || !ret.success) {
+          showReport(label, t('runFailed', { error: ret?.error || t('unknownError') }));
+          return;
+        }
+        showReport(label, ret.text || JSON.stringify(ret, null, 2));
+      } catch (err) {
+        showReport(label, t('runException', { error: err.message }));
+      }
+    }
+
+    btnViewLogs.addEventListener('click', () => {
+      showReport(t('viewLogs'), logsEl.textContent || t('logsEmpty'));
+    });
+    btnSessionStatus.addEventListener('click', () => runTool(t('sessionStatus'), 'manager-session-status'));
+    btnSessionClear.addEventListener('click', () => runTool(t('sessionClear'), 'manager-session-clear'));
+    btnSessionDiag.addEventListener('click', () => runTool(t('sessionDiag'), 'manager-session-diagnose'));
+    btnDiagFull.addEventListener('click', () => runTool(t('diagFull'), 'manager-diagnostics-report'));
+    btnRecentErrors.addEventListener('click', () => runTool(t('recentErrors'), 'manager-errors-report'));
+    btnRecentReqs.addEventListener('click', () => runTool(t('recentReqs'), 'manager-requests-report'));
+    btnGwHealth.addEventListener('click', () => runTool(t('gwHealth'), 'manager-gateway-health'));
+    btnOpenPanel.addEventListener('click', async () => {
+      await window.electronAPI.invoke('manager-open-dashboard');
+      showReport(t('reportOpenDashTitle'), t('reportOpenDashBody'));
+    });
+
+    document.querySelectorAll('.nav-item[data-target]').forEach((item) => {
+      item.addEventListener('click', () => {
+        setActiveNav(item);
+        showMainView(item.dataset.target);
+      });
+    });
+
+    if (langSelect) {
+      langSelect.addEventListener('change', async (e) => {
+        uiLanguage = normalizeLang(e.target.value);
+        applyI18n();
+        try { await window.electronAPI.invoke('app-set-language', uiLanguage); } catch {}
+      });
+    }
+
+    loadPersistedState();
+    initLanguage();
+    refreshAiUi();
+    refreshChannelListUi();
+    loadChannelToForm(selectedChannel);
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

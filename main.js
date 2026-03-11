@@ -25,6 +25,7 @@ const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const http = require('http');
 const OpenClawClient = require('./openclaw-client');
 const SmartVoiceSystem = require('./smart-voice'); // 🎙️ 智能语音系统
 const MessageSyncSystem = require('./message-sync');
@@ -46,11 +47,92 @@ const configManager = require('./utils/config-manager'); // 🔒 配置管理
 const SecureStorage = require('./utils/secure-storage'); // 🔒 安全存储
 const pathResolver = require('./utils/openclaw-path-resolver'); // 🔧 路径解析
 const SessionLockManager = require('./utils/session-lock-manager');
-const APP_NAME = 'EggClaw';
+const APP_NAME = 'X Claw';
 const PET_NAME = '闪电⚡️';
 const SPEECH_AFTER_CAPTION_DELAY_MS = 650;
 const QUICK_SWITCH_MODEL_IDS = ['minimax/MiniMax-M2.5', 'claude-cli/opus-4.6'];
 const CHAT_TIMING_LOG = '/tmp/eggclaw-chat-timing.log';
+
+const SUPPORTED_UI_LANGS = new Set(['zh-CN', 'en-US']);
+const APP_I18N = {
+  'zh-CN': {
+    showHide: '显示/隐藏',
+    modelMenu: '模型',
+    modelPanel: '模型管理面板',
+    refreshModels: '刷新模型列表',
+    refreshModelsDone: '模型列表已刷新',
+    refreshModelsCount: '共 {count} 个模型',
+    incubatorService: '孵化服务',
+    shellSettings: '蛋壳设置',
+    incubatorGuide: '孵化引导',
+    recoverSession: '恢复会话',
+    exit: '退出',
+    tooltipAssistant: '你的数字助手',
+    modelSwitcherTitle: '模型切换',
+    incubatorConsoleTitle: '孵化控制台',
+    setupWizardTitle: '孵化引导',
+    gatewayLabel: '网关'
+  },
+  'en-US': {
+    showHide: 'Show / Hide',
+    modelMenu: 'Model',
+    modelPanel: 'Model Settings',
+    refreshModels: 'Refresh Models',
+    refreshModelsDone: 'Model list refreshed',
+    refreshModelsCount: '{count} models available',
+    incubatorService: 'Incubator Service',
+    shellSettings: 'Shell Settings',
+    incubatorGuide: 'Setup Wizard',
+    recoverSession: 'Recover Session',
+    exit: 'Quit',
+    tooltipAssistant: 'Your digital assistant',
+    modelSwitcherTitle: 'Model Switcher',
+    incubatorConsoleTitle: 'Incubator Console',
+    setupWizardTitle: 'Setup Wizard',
+    gatewayLabel: 'Gateway'
+  }
+};
+
+function normalizeUiLanguage(lang) {
+  if (!lang || typeof lang !== 'string') return 'zh-CN';
+  if (SUPPORTED_UI_LANGS.has(lang)) return lang;
+  const lowered = lang.toLowerCase();
+  if (lowered.startsWith('en')) return 'en-US';
+  return 'zh-CN';
+}
+
+function getUiLanguage() {
+  if (!petConfig) return 'zh-CN';
+  return normalizeUiLanguage(petConfig.get('uiLanguage'));
+}
+
+function tApp(key, vars = {}) {
+  const lang = getUiLanguage();
+  const dict = APP_I18N[lang] || APP_I18N['zh-CN'];
+  const fallback = APP_I18N['zh-CN'];
+  let text = dict[key] || fallback[key] || key;
+  for (const [k, v] of Object.entries(vars)) {
+    text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+  }
+  return text;
+}
+
+function broadcastLanguageChanged(lang) {
+  const normalized = normalizeUiLanguage(lang);
+  const windows = [
+    mainWindow,
+    lyricsWindow,
+    modelSettingsWindow,
+    diagnosticToolboxWindow,
+    setupWizardWindow,
+    incubatorConsoleWindow
+  ];
+  windows.forEach((win) => {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('app-language-changed', normalized);
+    }
+  });
+}
 
 function logChatTiming(stage, data = {}) {
   try {
@@ -165,6 +247,155 @@ async function openGatewayDashboard() {
     console.warn('⚠️ 获取 Dashboard URL 失败，使用回退地址:', err.message);
     await shell.openExternal(fallbackUrl);
   }
+}
+
+function showServiceOverview() {
+  const status = serviceManager.getStatus();
+  const gatewayStatus = status.gateway.status === 'running' ? '✅ 运行中' : '❌ 已停止';
+  const uptime = serviceManager.formatUptime(serviceManager.getUptime('gateway'));
+  showServiceNotification('孵化概览', `Gateway: ${gatewayStatus}\n运行时间: ${uptime}`);
+}
+
+async function handleRecoverSession() {
+  showServiceNotification('正在恢复...', '清理飞书会话缓存');
+  try {
+    const result = await doRefreshSession();
+    showServiceNotification('恢复成功', `已清理 ${result.sessions?.length || 0} 个会话`);
+  } catch (e) {
+    showServiceNotification('恢复失败', e.message);
+  }
+}
+
+function showRecentAppLogs(lines = 20) {
+  const logs = serviceManager.getRecentLogs(lines);
+  const logText = logs.map((l) => `[${l.level}] ${l.message}`).join('\n');
+  showServiceNotification('应用日志', logText || '暂无日志');
+}
+
+function refreshLocalizedWindowTitles() {
+  if (incubatorConsoleWindow && !incubatorConsoleWindow.isDestroyed()) {
+    incubatorConsoleWindow.setTitle(`${APP_NAME} ${tApp('incubatorConsoleTitle')}`);
+  }
+  if (modelSettingsWindow && !modelSettingsWindow.isDestroyed()) {
+    modelSettingsWindow.setTitle(`${APP_NAME} ${tApp('modelSwitcherTitle')}`);
+  }
+  if (setupWizardWindow && !setupWizardWindow.isDestroyed()) {
+    setupWizardWindow.setTitle(`${APP_NAME} ${tApp('setupWizardTitle')}`);
+  }
+}
+
+async function openOpenClawManager() {
+  const managerAppPath = '/Applications/OpenClaw Manager.app';
+  const managerUrls = [
+    'http://127.0.0.1:4310',
+    'http://localhost:1420'
+  ];
+
+  try {
+    const openResult = await shell.openPath(managerAppPath);
+    if (!openResult) return true;
+  } catch (err) {
+    console.warn('⚠️ 打开 OpenClaw Manager.app 失败:', err.message);
+  }
+
+  for (const url of managerUrls) {
+    try {
+      await shell.openExternal(url);
+      return true;
+    } catch (err) {
+      console.warn(`⚠️ 打开 Manager 地址失败: ${url}`, err.message);
+    }
+  }
+
+  showServiceNotification('打开失败', '未找到 OpenClaw Manager，请先安装或启动 Manager 服务');
+  return false;
+}
+
+async function openOpenClawManagerChannels() {
+  const routeUrls = [
+    'http://127.0.0.1:4310/#/channels',
+    'http://localhost:1420/#/channels',
+    'http://127.0.0.1:4310/channels',
+    'http://localhost:1420/channels'
+  ];
+
+  for (const url of routeUrls) {
+    try {
+      await shell.openExternal(url);
+      return true;
+    } catch (err) {
+      console.warn(`⚠️ 打开消息渠道页面失败: ${url}`, err.message);
+    }
+  }
+
+  return openOpenClawManager();
+}
+
+function isUrlReachable(url, timeoutMs = 1000) {
+  return new Promise((resolve) => {
+    const req = http.get(url, (res) => {
+      res.resume();
+      resolve(res.statusCode >= 200 && res.statusCode < 500);
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+async function resolveManagerBaseUrl() {
+  const candidates = ['http://127.0.0.1:4310', 'http://127.0.0.1:1420'];
+  for (const base of candidates) {
+    // eslint-disable-next-line no-await-in-loop
+    if (await isUrlReachable(`${base}/`)) return base;
+  }
+
+  // 尝试静默拉起 Manager（仅打开 App，不跳转浏览器）
+  try {
+    await shell.openPath('/Applications/OpenClaw Manager.app');
+  } catch {}
+
+  const deadline = Date.now() + 12000;
+  while (Date.now() < deadline) {
+    for (const base of candidates) {
+      // eslint-disable-next-line no-await-in-loop
+      if (await isUrlReachable(`${base}/`)) return base;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return null;
+}
+
+let incubatorConsoleWindow = null;
+function openIncubatorConsole() {
+  if (incubatorConsoleWindow && !incubatorConsoleWindow.isDestroyed()) {
+    incubatorConsoleWindow.focus();
+    return;
+  }
+
+  incubatorConsoleWindow = new BrowserWindow({
+    width: 1180,
+    height: 760,
+    minWidth: 980,
+    minHeight: 640,
+    title: `${APP_NAME} ${tApp('incubatorConsoleTitle')}`,
+    frame: true,
+    resizable: true,
+    autoHideMenuBar: true,
+    backgroundColor: '#0b0d13',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+
+  incubatorConsoleWindow.setMenuBarVisibility(false);
+  incubatorConsoleWindow.loadFile('incubator-console.html');
+  incubatorConsoleWindow.on('closed', () => { incubatorConsoleWindow = null; });
 }
 
 // 🔒 单实例锁 - 防止重复启动
@@ -339,6 +570,9 @@ async function createWindow() {
   // 加载配置
   petConfig = new PetConfig();
   await petConfig.load();
+  if (!petConfig.get('uiLanguage')) {
+    petConfig.set('uiLanguage', 'zh-CN');
+  }
   syncLoginItemSettings(petConfig.get('autoLaunch'));
   
   // 初始化所有系统
@@ -746,7 +980,7 @@ async function createWindow() {
   // 右键菜单 - 增强版
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: '显示/隐藏',
+      label: tApp('showHide'),
       click: () => {
         if (mainWindow.isVisible()) {
           mainWindow.hide();
@@ -757,291 +991,44 @@ async function createWindow() {
     },
     { type: 'separator' },
     {
-      label: `🔄 模型: ${modelSwitcher.getStatusText()}`,
+      label: `🔄 ${tApp('modelMenu')}: ${modelSwitcher.getStatusText()}`,
       submenu: [
         ...modelSwitcher.getTrayMenuItems(),
         { type: 'separator' },
         {
-          label: '⚙️ 模型管理面板',
+          label: `⚙️ ${tApp('modelPanel')}`,
           click: () => {
             openModelSettings();
           }
         },
         {
-          label: '🔃 刷新模型列表',
+          label: `🔃 ${tApp('refreshModels')}`,
           click: () => {
             modelSwitcher.reload();
             rebuildTrayMenu();
-            showServiceNotification('模型列表已刷新', `共 ${modelSwitcher.getModels().length} 个模型`);
+            showServiceNotification(tApp('refreshModelsDone'), tApp('refreshModelsCount', { count: modelSwitcher.getModels().length }));
           }
         }
       ]
     },
     { type: 'separator' },
     {
-      label: '🔧 孵化服务',
-      submenu: [
-        {
-          label: '📊 服务状态',
-          click: () => {
-            const status = serviceManager.getStatus();
-            const gatewayStatus = status.gateway.status === 'running' ? '✅ 运行中' : '❌ 已停止';
-            const uptime = serviceManager.formatUptime(serviceManager.getUptime('gateway'));
-            showServiceNotification('OpenClaw 服务状态', `Gateway: ${gatewayStatus}\n运行时间: ${uptime}`);
-          }
-        },
-        { type: 'separator' },
-        {
-          label: '▶️ 启动 Gateway',
-          click: async () => {
-            showServiceNotification('正在启动...', 'OpenClaw Gateway');
-            const result = await serviceManager.startGateway();
-            if (result.success) {
-              showServiceNotification('启动成功', 'OpenClaw Gateway 已启动');
-            } else {
-              showServiceNotification('启动失败', result.error || '未知错误');
-            }
-          }
-        },
-        {
-          label: '⏹️ 停止 Gateway',
-          click: async () => {
-            showServiceNotification('正在停止...', 'OpenClaw Gateway');
-            await serviceManager.stopGateway();
-            showServiceNotification('已停止', 'OpenClaw Gateway');
-          }
-        },
-        {
-          label: '🔄 重启 Gateway',
-          click: async () => {
-            showServiceNotification('正在重启...', 'OpenClaw Gateway');
-            const result = await serviceManager.restartGateway();
-            if (result.success) {
-              showServiceNotification('重启成功', 'OpenClaw Gateway 已重新启动');
-            } else {
-              showServiceNotification('重启失败', result.error || '未知错误');
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: '📋 查看日志',
-          click: () => {
-            const logs = serviceManager.getRecentLogs(10);
-            const logText = logs.map(l => `[${l.level}] ${l.message}`).join('\n');
-            showServiceNotification('最近日志', logText || '暂无日志');
-          }
-        },
-        { type: 'separator' },
-        {
-          label: '💬 会话管理',
-          submenu: [
-            {
-              label: '📊 查看会话状态',
-              click: async () => {
-                const info = await openclawClient.getSessionInfo();
-                const contextCheck = await openclawClient.checkContextLength('');
-                const percentage = contextCheck.percentage || 0;
-                const statusIcon = percentage > 80 ? '🔴' : percentage > 50 ? '🟡' : '🟢';
-
-                showServiceNotification(
-                  '会话状态',
-                  `${statusIcon} 上下文使用: ${percentage}%\n` +
-                  `活跃会话: ${info.activeSessions} 个\n` +
-                  `估算 tokens: ~${info.estimatedTokens}\n` +
-                  `模型限制: ${contextCheck.limit} tokens`
-                );
-              }
-            },
-            {
-              label: '🗑️ 清理当前会话',
-              click: async () => {
-                showServiceNotification('正在清理...', '删除会话文件');
-                const result = await openclawClient.clearCurrentSession();
-                if (result.success) {
-                  showServiceNotification('清理成功', result.message);
-                  if (voiceSystem) {
-                    voiceSystem.speak('会话已清理，可以开始新对话了');
-                  }
-                } else {
-                  showServiceNotification('清理失败', result.message);
-                }
-              }
-            },
-            {
-              label: '🔍 诊断会话问题',
-              click: async () => {
-                const info = await openclawClient.getSessionInfo();
-                const contextCheck = await openclawClient.checkContextLength('');
-
-                let diagnosis = '会话诊断报告:\n\n';
-
-                // 检查会话数量
-                if (info.activeSessions === 0) {
-                  diagnosis += '✅ 没有活跃会话\n';
-                } else if (info.activeSessions > 3) {
-                  diagnosis += `⚠️ 会话过多 (${info.activeSessions}个)，建议清理\n`;
-                } else {
-                  diagnosis += `✅ 会话数量正常 (${info.activeSessions}个)\n`;
-                }
-
-                // 检查上下文长度
-                if (contextCheck.percentage > 90) {
-                  diagnosis += `🔴 上下文严重超限 (${contextCheck.percentage}%)，必须清理！\n`;
-                } else if (contextCheck.percentage > 80) {
-                  diagnosis += `🟡 上下文接近限制 (${contextCheck.percentage}%)，建议清理\n`;
-                } else {
-                  diagnosis += `✅ 上下文使用正常 (${contextCheck.percentage}%)\n`;
-                }
-
-                // 检查会话文件大小
-                if (info.sessions && info.sessions.length > 0) {
-                  const largeSession = info.sessions.find(s => s.sizeKB > 500);
-                  if (largeSession) {
-                    diagnosis += `⚠️ 发现大型会话文件 (${largeSession.sizeKB}KB)\n`;
-                  }
-                }
-
-                showServiceNotification('诊断结果', diagnosis);
-              }
-            }
-          ]
-        },
-        { type: 'separator' },
-        {
-          label: '🔍 诊断工具',
-          submenu: [
-            {
-              label: '📊 完整诊断报告',
-              click: async () => {
-                const diagnostics = await openclawClient.getDiagnostics();
-
-                let report = '=== OpenClaw 诊断报告 ===\n\n';
-
-                // 连接状态
-                report += `连接状态: ${diagnostics.connection.connected ? '✅ 已连接' : '❌ 未连接'}\n`;
-
-                // 会话状态
-                const contextIcon = diagnostics.session.contextPercentage > 80 ? '🔴' :
-                                   diagnostics.session.contextPercentage > 50 ? '🟡' : '🟢';
-                report += `\n会话状态:\n`;
-                report += `${contextIcon} 上下文: ${diagnostics.session.contextPercentage}% (${diagnostics.session.estimatedTokens}/${diagnostics.session.contextLimit})\n`;
-                report += `活跃会话: ${diagnostics.session.activeSessions} 个\n`;
-
-                // 请求统计
-                report += `\n请求统计:\n`;
-                report += `总请求数: ${diagnostics.requests.total}\n`;
-                report += `最近请求: ${diagnostics.requests.recentCount} 条\n`;
-
-                // 错误统计
-                report += `\n错误统计:\n`;
-                report += `总错误数: ${diagnostics.errors.total}\n`;
-                report += `最近错误: ${diagnostics.errors.recentCount} 条\n`;
-
-                if (diagnostics.errors.recent.length > 0) {
-                  report += `\n最近错误详情:\n`;
-                  diagnostics.errors.recent.slice(0, 3).forEach(err => {
-                    report += `- [Req#${err.requestId}] ${err.error} (${err.elapsed}ms)\n`;
-                  });
-                }
-
-                showServiceNotification('诊断报告', report);
-              }
-            },
-            {
-              label: '❌ 查看最近错误',
-              click: async () => {
-                const errors = openclawClient.getRecentErrors(10);
-
-                if (errors.length === 0) {
-                  showServiceNotification('最近错误', '✅ 没有错误记录');
-                  return;
-                }
-
-                let errorReport = `最近 ${errors.length} 条错误:\n\n`;
-                errors.forEach((err, idx) => {
-                  const time = new Date(err.timestamp).toLocaleTimeString();
-                  errorReport += `${idx + 1}. [${time}] Req#${err.requestId}\n`;
-                  errorReport += `   ${err.error} (${err.elapsed}ms)\n`;
-                  errorReport += `   消息: ${err.message}\n\n`;
-                });
-
-                showServiceNotification('最近错误', errorReport);
-              }
-            },
-            {
-              label: '📝 查看最近请求',
-              click: async () => {
-                const requests = openclawClient.getRecentRequests(10);
-
-                if (requests.length === 0) {
-                  showServiceNotification('最近请求', '没有请求记录');
-                  return;
-                }
-
-                let requestReport = `最近 ${requests.length} 条请求:\n\n`;
-                requests.forEach((req, idx) => {
-                  const time = new Date(req.timestamp).toLocaleTimeString();
-                  const status = req.success ? '✅' : '❌';
-                  requestReport += `${idx + 1}. ${status} [${time}] Req#${req.requestId} (${req.elapsed}ms)\n`;
-                  requestReport += `   消息: ${req.message}\n`;
-                  if (req.response) {
-                    requestReport += `   响应: ${req.response}\n`;
-                  }
-                  requestReport += `\n`;
-                });
-
-                showServiceNotification('最近请求', requestReport);
-              }
-            },
-            {
-              label: '🏥 检查 Gateway 健康',
-              click: async () => {
-                showServiceNotification('正在检查...', 'Gateway 健康状态');
-
-                const isConnected = await openclawClient.checkConnection();
-                const status = serviceManager.getStatus();
-                const uptime = serviceManager.formatUptime(serviceManager.getUptime('gateway'));
-
-                let healthReport = 'Gateway 健康检查:\n\n';
-                healthReport += `连接状态: ${isConnected ? '✅ 正常' : '❌ 异常'}\n`;
-                healthReport += `进程状态: ${status.gateway.status === 'running' ? '✅ 运行中' : '❌ 已停止'}\n`;
-                healthReport += `运行时间: ${uptime}\n`;
-
-                if (status.gateway.pid) {
-                  healthReport += `进程 PID: ${status.gateway.pid}\n`;
-                }
-
-                showServiceNotification('健康检查结果', healthReport);
-              }
-            }
-          ]
-        }
-      ]
+      label: `🔧 ${tApp('incubatorService')}`,
+      click: () => { openIncubatorConsole(); }
     },
     {
-      label: '🏥 诊断工具箱',
-      click: () => { openDiagnosticToolbox(); }
-    },
-    {
-      label: '🌐 打开孵化台',
-      click: async () => {
-        await openGatewayDashboard();
-      }
-    },
-    {
-      label: '蛋壳设置',
+      label: tApp('shellSettings'),
       click: () => {
         // TODO: 打开设置窗口
       }
     },
     {
-      label: `🧙 ${APP_NAME} 孵化引导`,
+      label: `🧙 ${APP_NAME} ${tApp('incubatorGuide')}`,
       click: () => { reopenSetupWizard(); }
     },
     { type: 'separator' },
     {
-      label: '🔄 恢复会话',
+      label: `🔄 ${tApp('recoverSession')}`,
       click: async () => {
         showServiceNotification('正在恢复...', '清理飞书会话缓存');
         try {
@@ -1054,7 +1041,7 @@ async function createWindow() {
     },
     { type: 'separator' },
     {
-      label: '退出',
+      label: tApp('exit'),
       click: () => {
         app.quit();
       }
@@ -1063,7 +1050,7 @@ async function createWindow() {
 
   // 创建系统托盘图标
   tray = new Tray(createTrayIcon());
-  tray.setToolTip('Claw - 你的数字助手');
+  tray.setToolTip(`${APP_NAME} - ${tApp('tooltipAssistant')}`);
   tray.setContextMenu(contextMenu);
   
   tray.on('click', () => {
@@ -1088,10 +1075,10 @@ async function createWindow() {
  */
 function rebuildTrayMenu() {
   if (!tray || !modelSwitcher) return;
-  tray.setToolTip(`Claw 🦞 | ${modelSwitcher.getStatusText()}`);
+  tray.setToolTip(`${APP_NAME} - ${tApp('tooltipAssistant')}`);
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: '显示/隐藏',
+      label: tApp('showHide'),
       click: () => {
         if (mainWindow) {
           mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
@@ -1100,294 +1087,44 @@ function rebuildTrayMenu() {
     },
     { type: 'separator' },
     {
-      label: `🔄 模型: ${modelSwitcher.getStatusText()}`,
+      label: `🔄 ${tApp('modelMenu')}: ${modelSwitcher.getStatusText()}`,
       submenu: [
         ...modelSwitcher.getTrayMenuItems(),
         { type: 'separator' },
         {
-          label: '⚙️ 模型管理面板',
+          label: `⚙️ ${tApp('modelPanel')}`,
           click: () => { openModelSettings(); }
         },
         {
-          label: '🔃 刷新模型列表',
+          label: `🔃 ${tApp('refreshModels')}`,
           click: () => {
             modelSwitcher.reload();
             rebuildTrayMenu();
-            showServiceNotification('模型列表已刷新', `共 ${modelSwitcher.getModels().length} 个模型`);
+            showServiceNotification(
+              tApp('refreshModelsDone'),
+              tApp('refreshModelsCount', { count: modelSwitcher.getModels().length })
+            );
           }
         }
       ]
     },
     { type: 'separator' },
     {
-      label: '🔧 孵化服务',
-      submenu: [
-        {
-          label: '📊 服务状态',
-          click: () => {
-            const status = serviceManager.getStatus();
-            const gatewayStatus = status.gateway.status === 'running' ? '✅ 运行中' : '❌ 已停止';
-            const uptime = serviceManager.formatUptime(serviceManager.getUptime('gateway'));
-            showServiceNotification('OpenClaw 服务状态', `Gateway: ${gatewayStatus}\n运行时间: ${uptime}`);
-          }
-        },
-        { type: 'separator' },
-        {
-          label: '▶️ 启动 Gateway',
-          click: async () => {
-            showServiceNotification('正在启动...', 'OpenClaw Gateway');
-            const result = await serviceManager.startGateway();
-            if (result.success) showServiceNotification('启动成功', 'OpenClaw Gateway 已启动');
-            else showServiceNotification('启动失败', result.error || '未知错误');
-          }
-        },
-        {
-          label: '⏹️ 停止 Gateway',
-          click: async () => {
-            showServiceNotification('正在停止...', 'OpenClaw Gateway');
-            await serviceManager.stopGateway();
-            showServiceNotification('已停止', 'OpenClaw Gateway');
-          }
-        },
-        {
-          label: '🔄 重启 Gateway',
-          click: async () => {
-            showServiceNotification('正在重启...', 'OpenClaw Gateway');
-            const result = await serviceManager.restartGateway();
-            if (result.success) showServiceNotification('重启成功', 'OpenClaw Gateway 已重新启动');
-            else showServiceNotification('重启失败', result.error || '未知错误');
-          }
-        },
-        { type: 'separator' },
-        {
-          label: '📋 查看日志',
-          click: () => {
-            const logs = serviceManager.getRecentLogs(10);
-            const logText = logs.map(l => `[${l.level}] ${l.message}`).join('\n');
-            showServiceNotification('最近日志', logText || '暂无日志');
-          }
-        },
-        { type: 'separator' },
-        {
-          label: '💬 会话管理',
-          submenu: [
-            {
-              label: '📊 查看会话状态',
-              click: async () => {
-                const info = await openclawClient.getSessionInfo();
-                const contextCheck = await openclawClient.checkContextLength('');
-                const percentage = contextCheck.percentage || 0;
-                const statusIcon = percentage > 80 ? '🔴' : percentage > 50 ? '🟡' : '🟢';
-
-                showServiceNotification(
-                  '会话状态',
-                  `${statusIcon} 上下文使用: ${percentage}%\n` +
-                  `活跃会话: ${info.activeSessions} 个\n` +
-                  `估算 tokens: ~${info.estimatedTokens}\n` +
-                  `模型限制: ${contextCheck.limit} tokens`
-                );
-              }
-            },
-            {
-              label: '🗑️ 清理当前会话',
-              click: async () => {
-                showServiceNotification('正在清理...', '删除会话文件');
-                const result = await openclawClient.clearCurrentSession();
-                if (result.success) {
-                  showServiceNotification('清理成功', result.message);
-                  if (voiceSystem) {
-                    voiceSystem.speak('会话已清理，可以开始新对话了');
-                  }
-                } else {
-                  showServiceNotification('清理失败', result.message);
-                }
-              }
-            },
-            {
-              label: '🔍 诊断会话问题',
-              click: async () => {
-                const info = await openclawClient.getSessionInfo();
-                const contextCheck = await openclawClient.checkContextLength('');
-
-                let diagnosis = '会话诊断报告:\n\n';
-
-                // 检查会话数量
-                if (info.activeSessions === 0) {
-                  diagnosis += '✅ 没有活跃会话\n';
-                } else if (info.activeSessions > 3) {
-                  diagnosis += `⚠️ 会话过多 (${info.activeSessions}个)，建议清理\n`;
-                } else {
-                  diagnosis += `✅ 会话数量正常 (${info.activeSessions}个)\n`;
-                }
-
-                // 检查上下文长度
-                if (contextCheck.percentage > 90) {
-                  diagnosis += `🔴 上下文严重超限 (${contextCheck.percentage}%)，必须清理！\n`;
-                } else if (contextCheck.percentage > 80) {
-                  diagnosis += `🟡 上下文接近限制 (${contextCheck.percentage}%)，建议清理\n`;
-                } else {
-                  diagnosis += `✅ 上下文使用正常 (${contextCheck.percentage}%)\n`;
-                }
-
-                // 检查会话文件大小
-                if (info.sessions && info.sessions.length > 0) {
-                  const largeSession = info.sessions.find(s => s.sizeKB > 500);
-                  if (largeSession) {
-                    diagnosis += `⚠️ 发现大型会话文件 (${largeSession.sizeKB}KB)\n`;
-                  }
-                }
-
-                showServiceNotification('诊断结果', diagnosis);
-              }
-            }
-          ]
-        },
-        { type: 'separator' },
-        {
-          label: '🔍 诊断工具',
-          submenu: [
-            {
-              label: '📊 完整诊断报告',
-              click: async () => {
-                const diagnostics = await openclawClient.getDiagnostics();
-
-                let report = '=== OpenClaw 诊断报告 ===\n\n';
-
-                // 连接状态
-                report += `连接状态: ${diagnostics.connection.connected ? '✅ 已连接' : '❌ 未连接'}\n`;
-
-                // 会话状态
-                const contextIcon = diagnostics.session.contextPercentage > 80 ? '🔴' :
-                                   diagnostics.session.contextPercentage > 50 ? '🟡' : '🟢';
-                report += `\n会话状态:\n`;
-                report += `${contextIcon} 上下文: ${diagnostics.session.contextPercentage}% (${diagnostics.session.estimatedTokens}/${diagnostics.session.contextLimit})\n`;
-                report += `活跃会话: ${diagnostics.session.activeSessions} 个\n`;
-
-                // 请求统计
-                report += `\n请求统计:\n`;
-                report += `总请求数: ${diagnostics.requests.total}\n`;
-                report += `最近请求: ${diagnostics.requests.recentCount} 条\n`;
-
-                // 错误统计
-                report += `\n错误统计:\n`;
-                report += `总错误数: ${diagnostics.errors.total}\n`;
-                report += `最近错误: ${diagnostics.errors.recentCount} 条\n`;
-
-                if (diagnostics.errors.recent.length > 0) {
-                  report += `\n最近错误详情:\n`;
-                  diagnostics.errors.recent.slice(0, 3).forEach(err => {
-                    report += `- [Req#${err.requestId}] ${err.error} (${err.elapsed}ms)\n`;
-                  });
-                }
-
-                showServiceNotification('诊断报告', report);
-              }
-            },
-            {
-              label: '❌ 查看最近错误',
-              click: async () => {
-                const errors = openclawClient.getRecentErrors(10);
-
-                if (errors.length === 0) {
-                  showServiceNotification('最近错误', '✅ 没有错误记录');
-                  return;
-                }
-
-                let errorReport = `最近 ${errors.length} 条错误:\n\n`;
-                errors.forEach((err, idx) => {
-                  const time = new Date(err.timestamp).toLocaleTimeString();
-                  errorReport += `${idx + 1}. [${time}] Req#${err.requestId}\n`;
-                  errorReport += `   ${err.error} (${err.elapsed}ms)\n`;
-                  errorReport += `   消息: ${err.message}\n\n`;
-                });
-
-                showServiceNotification('最近错误', errorReport);
-              }
-            },
-            {
-              label: '📝 查看最近请求',
-              click: async () => {
-                const requests = openclawClient.getRecentRequests(10);
-
-                if (requests.length === 0) {
-                  showServiceNotification('最近请求', '没有请求记录');
-                  return;
-                }
-
-                let requestReport = `最近 ${requests.length} 条请求:\n\n`;
-                requests.forEach((req, idx) => {
-                  const time = new Date(req.timestamp).toLocaleTimeString();
-                  const status = req.success ? '✅' : '❌';
-                  requestReport += `${idx + 1}. ${status} [${time}] Req#${req.requestId} (${req.elapsed}ms)\n`;
-                  requestReport += `   消息: ${req.message}\n`;
-                  if (req.response) {
-                    requestReport += `   响应: ${req.response}\n`;
-                  }
-                  requestReport += `\n`;
-                });
-
-                showServiceNotification('最近请求', requestReport);
-              }
-            },
-            {
-              label: '🏥 检查 Gateway 健康',
-              click: async () => {
-                showServiceNotification('正在检查...', 'Gateway 健康状态');
-
-                const isConnected = await openclawClient.checkConnection();
-                const status = serviceManager.getStatus();
-                const uptime = serviceManager.formatUptime(serviceManager.getUptime('gateway'));
-
-                let healthReport = 'Gateway 健康检查:\n\n';
-                healthReport += `连接状态: ${isConnected ? '✅ 正常' : '❌ 异常'}\n`;
-                healthReport += `进程状态: ${status.gateway.status === 'running' ? '✅ 运行中' : '❌ 已停止'}\n`;
-                healthReport += `运行时间: ${uptime}\n`;
-
-                if (status.gateway.pid) {
-                  healthReport += `进程 PID: ${status.gateway.pid}\n`;
-                }
-
-                showServiceNotification('健康检查结果', healthReport);
-              }
-            }
-          ]
-        }
-      ]
+      label: `🔧 ${tApp('incubatorService')}`,
+      click: () => { openIncubatorConsole(); }
     },
     {
-      label: '🏥 诊断工具箱',
-      click: () => { openDiagnosticToolbox(); }
-    },
-    {
-      label: '🌐 打开孵化台',
-      click: async () => {
-        await openGatewayDashboard();
-      }
-    },
-    {
-      label: '蛋壳设置',
+      label: tApp('shellSettings'),
       click: () => {}
     },
     {
-      label: `🧙 ${APP_NAME} 孵化引导`,
+      label: `🧙 ${APP_NAME} ${tApp('incubatorGuide')}`,
       click: () => { reopenSetupWizard(); }
     },
     { type: 'separator' },
-    {
-      label: '🔄 恢复会话',
-      click: async () => {
-        showServiceNotification('正在恢复...', '清理飞书会话缓存');
-        try {
-          const result = await doRefreshSession();
-          showServiceNotification('恢复成功', `已清理 ${result.sessions?.length || 0} 个会话`);
-        } catch(e) {
-          showServiceNotification('恢复失败', e.message);
-        }
-      }
-    },
     { type: 'separator' },
     {
-      label: '退出',
+      label: tApp('exit'),
       click: () => { app.quit(); }
     }
   ]);
@@ -1407,7 +1144,7 @@ function openModelSettings() {
   modelSettingsWindow = new BrowserWindow({
     width: 520,
     height: 640,
-    title: `${APP_NAME} 模型切换`,
+    title: `${APP_NAME} ${tApp('modelSwitcherTitle')}`,
     frame: false,
     resizable: true,
     minimizable: true,
@@ -1501,7 +1238,7 @@ function reopenSetupWizard() {
   setupWizardWindow = new BrowserWindow({
     width: 700,
     height: 550,
-    title: `${APP_NAME} 孵化引导`,
+    title: `${APP_NAME} ${tApp('setupWizardTitle')}`,
     resizable: false,
     minimizable: true,
     maximizable: false,
@@ -1731,6 +1468,184 @@ ipcMain.handle('openclaw-status', async () => {
   return { connected, status };
 });
 
+ipcMain.handle('manager-overview', async () => {
+  const connected = await openclawClient.checkConnection();
+  const diagnostics = await openclawClient.getDiagnostics();
+  const status = serviceManager ? serviceManager.getStatus() : { gateway: {} };
+  const gatewayUptimeMs = serviceManager ? serviceManager.getUptime('gateway') : 0;
+  const gatewayUptime = serviceManager ? serviceManager.formatUptime(gatewayUptimeMs) : '--';
+  const logs = serviceManager ? serviceManager.getRecentLogs(50) : [];
+
+  return {
+    connected,
+    gateway: {
+      status: status?.gateway?.status || 'unknown',
+      pid: status?.gateway?.pid || null,
+      uptimeMs: gatewayUptimeMs || 0,
+      uptime: gatewayUptime,
+      port: 18789
+    },
+    diagnostics: {
+      requestsTotal: diagnostics?.requests?.total || 0,
+      activeSessions: diagnostics?.session?.activeSessions || 0,
+      estimatedTokens: diagnostics?.session?.estimatedTokens || 0,
+      contextPercentage: diagnostics?.session?.contextPercentage || 0,
+      recentErrors: diagnostics?.errors?.recentCount || 0
+    },
+    logs
+  };
+});
+
+ipcMain.handle('manager-service-action', async (event, action) => {
+  if (!serviceManager) return { success: false, error: 'service manager unavailable' };
+  try {
+    if (action === 'start') {
+      const result = await serviceManager.startGateway();
+      return { success: !!result?.success, result };
+    }
+    if (action === 'stop') {
+      await serviceManager.stopGateway();
+      return { success: true };
+    }
+    if (action === 'restart') {
+      const result = await serviceManager.restartGateway();
+      return { success: !!result?.success, result };
+    }
+    return { success: false, error: `unknown action: ${action}` };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('manager-open-dashboard', async () => {
+  await openGatewayDashboard();
+  return { success: true };
+});
+
+ipcMain.handle('manager-open-channels', async () => {
+  await openOpenClawManagerChannels();
+  return { success: true };
+});
+
+ipcMain.handle('manager-embed-url', async (event, section) => {
+  const baseUrl = await resolveManagerBaseUrl();
+  if (!baseUrl) {
+    return { success: false, error: 'OpenClaw Manager 未启动，且无法自动拉起' };
+  }
+  const route = section === 'channels' ? '/#/channels' : '/#/ai';
+  return { success: true, url: `${baseUrl}${route}` };
+});
+
+ipcMain.handle('manager-open-model-settings', async () => {
+  openModelSettings();
+  return { success: true };
+});
+
+ipcMain.handle('manager-open-diagnostics', async () => {
+  openDiagnosticToolbox();
+  return { success: true };
+});
+
+ipcMain.handle('manager-session-status', async () => {
+  const info = await openclawClient.getSessionInfo();
+  const contextCheck = await openclawClient.checkContextLength('');
+  const percentage = contextCheck.percentage || 0;
+  const statusIcon = percentage > 80 ? '🔴' : percentage > 50 ? '🟡' : '🟢';
+  const text =
+    `${statusIcon} 上下文使用: ${percentage}%\n` +
+    `活跃会话: ${info.activeSessions} 个\n` +
+    `估算 tokens: ~${info.estimatedTokens}\n` +
+    `模型限制: ${contextCheck.limit} tokens`;
+  return { success: true, text, info, contextCheck };
+});
+
+ipcMain.handle('manager-session-clear', async () => {
+  const result = await openclawClient.clearCurrentSession();
+  return { success: !!result.success, text: result.message || '', result };
+});
+
+ipcMain.handle('manager-session-diagnose', async () => {
+  const info = await openclawClient.getSessionInfo();
+  const contextCheck = await openclawClient.checkContextLength('');
+  let diagnosis = '会话诊断报告:\n\n';
+  if (info.activeSessions === 0) diagnosis += '✅ 没有活跃会话\n';
+  else if (info.activeSessions > 3) diagnosis += `⚠️ 会话过多 (${info.activeSessions}个)，建议清理\n`;
+  else diagnosis += `✅ 会话数量正常 (${info.activeSessions}个)\n`;
+
+  if (contextCheck.percentage > 90) diagnosis += `🔴 上下文严重超限 (${contextCheck.percentage}%)，必须清理\n`;
+  else if (contextCheck.percentage > 80) diagnosis += `🟡 上下文接近限制 (${contextCheck.percentage}%)，建议清理\n`;
+  else diagnosis += `✅ 上下文使用正常 (${contextCheck.percentage}%)\n`;
+
+  if (info.sessions && info.sessions.length > 0) {
+    const largeSession = info.sessions.find((s) => s.sizeKB > 500);
+    if (largeSession) diagnosis += `⚠️ 发现大型会话文件 (${largeSession.sizeKB}KB)\n`;
+  }
+  return { success: true, text: diagnosis, info, contextCheck };
+});
+
+ipcMain.handle('manager-diagnostics-report', async () => {
+  const diagnostics = await openclawClient.getDiagnostics();
+  let report = '=== OpenClaw 诊断报告 ===\n\n';
+  report += `连接状态: ${diagnostics.connection.connected ? '✅ 已连接' : '❌ 未连接'}\n`;
+  const contextIcon = diagnostics.session.contextPercentage > 80 ? '🔴' : diagnostics.session.contextPercentage > 50 ? '🟡' : '🟢';
+  report += `\n会话状态:\n`;
+  report += `${contextIcon} 上下文: ${diagnostics.session.contextPercentage}% (${diagnostics.session.estimatedTokens}/${diagnostics.session.contextLimit})\n`;
+  report += `活跃会话: ${diagnostics.session.activeSessions} 个\n`;
+  report += `\n请求统计:\n`;
+  report += `总请求数: ${diagnostics.requests.total}\n`;
+  report += `最近请求: ${diagnostics.requests.recentCount} 条\n`;
+  report += `\n错误统计:\n`;
+  report += `总错误数: ${diagnostics.errors.total}\n`;
+  report += `最近错误: ${diagnostics.errors.recentCount} 条\n`;
+  if (diagnostics.errors.recent.length > 0) {
+    report += `\n最近错误详情:\n`;
+    diagnostics.errors.recent.slice(0, 3).forEach((err) => {
+      report += `- [Req#${err.requestId}] ${err.error} (${err.elapsed}ms)\n`;
+    });
+  }
+  return { success: true, text: report, diagnostics };
+});
+
+ipcMain.handle('manager-errors-report', async () => {
+  const errors = openclawClient.getRecentErrors(10);
+  if (errors.length === 0) return { success: true, text: '✅ 没有错误记录', errors: [] };
+  let text = `最近 ${errors.length} 条错误:\n\n`;
+  errors.forEach((err, idx) => {
+    const time = new Date(err.timestamp).toLocaleTimeString();
+    text += `${idx + 1}. [${time}] Req#${err.requestId}\n`;
+    text += `   ${err.error} (${err.elapsed}ms)\n`;
+    text += `   消息: ${err.message}\n\n`;
+  });
+  return { success: true, text, errors };
+});
+
+ipcMain.handle('manager-requests-report', async () => {
+  const requests = openclawClient.getRecentRequests(10);
+  if (requests.length === 0) return { success: true, text: '没有请求记录', requests: [] };
+  let text = `最近 ${requests.length} 条请求:\n\n`;
+  requests.forEach((req, idx) => {
+    const time = new Date(req.timestamp).toLocaleTimeString();
+    const status = req.success ? '✅' : '❌';
+    text += `${idx + 1}. ${status} [${time}] Req#${req.requestId} (${req.elapsed}ms)\n`;
+    text += `   消息: ${req.message}\n`;
+    if (req.response) text += `   响应: ${req.response}\n`;
+    text += '\n';
+  });
+  return { success: true, text, requests };
+});
+
+ipcMain.handle('manager-gateway-health', async () => {
+  const isConnected = await openclawClient.checkConnection();
+  const status = serviceManager.getStatus();
+  const gwUptime = serviceManager.formatUptime(serviceManager.getUptime('gateway'));
+  let text = 'Gateway 健康检查:\n\n';
+  text += `连接状态: ${isConnected ? '✅ 正常' : '❌ 异常'}\n`;
+  text += `进程状态: ${status.gateway.status === 'running' ? '✅ 运行中' : '❌ 已停止'}\n`;
+  text += `运行时间: ${gwUptime}\n`;
+  if (status.gateway.pid) text += `进程 PID: ${status.gateway.pid}\n`;
+  return { success: true, text, isConnected, status };
+});
+
 ipcMain.handle('egg-growth-metrics', async () => {
   const connected = await openclawClient.checkConnection();
   const diagnostics = await openclawClient.getDiagnostics();
@@ -1903,7 +1818,7 @@ app.whenReady().then(async () => {
   const startupPreflight = await shouldForceStartupPreflight();
   if (startupPreflight.force) {
     console.warn(`⚠️ ${startupPreflight.reason}`);
-    showServiceNotification('EggClaw 首次启动需要补全环境', startupPreflight.reason);
+    showServiceNotification(`${APP_NAME} 首次启动需要补全环境`, startupPreflight.reason);
     reopenSetupWizard();
   }
 });
@@ -1922,8 +1837,24 @@ function updateTrayTooltip() {
   if (!tray || !serviceManager) return;
   const status = serviceManager.getStatus();
   const gatewayStatus = status.gateway.status === 'running' ? '✅' : '❌';
-  tray.setToolTip(`Claw 🦞 | Gateway: ${gatewayStatus}`);
+  tray.setToolTip(`${APP_NAME} | ${tApp('gatewayLabel')}: ${gatewayStatus}`);
 }
+
+ipcMain.handle('app-get-language', async () => {
+  return getUiLanguage();
+});
+
+ipcMain.handle('app-set-language', async (event, lang) => {
+  const normalized = normalizeUiLanguage(lang);
+  if (petConfig) {
+    petConfig.set('uiLanguage', normalized);
+  }
+  refreshLocalizedWindowTitles();
+  rebuildTrayMenu();
+  updateTrayTooltip();
+  broadcastLanguageChanged(normalized);
+  return { success: true, language: normalized };
+});
 
 // 🔄 模型切换 IPC
 ipcMain.handle('model-current', async () => {

@@ -43,6 +43,16 @@ let contextMenuTarget = null;
 
 // ===== i18n =====
 let currentLang = 'zh';
+function appLangToPanelLang(lang) {
+  return String(lang || '').toLowerCase().startsWith('en') ? 'en' : 'zh';
+}
+function panelLangToAppLang(lang) {
+  return lang === 'en' ? 'en-US' : 'zh-CN';
+}
+function refreshLangButton() {
+  const btn = document.getElementById('langBtn');
+  if (btn) btn.textContent = currentLang === 'zh' ? '中/EN' : 'EN/中';
+}
 const i18n = {
   zh: { providers:'服务商', models:'模型', testAll:'全部测速', refresh:'刷新',
     currentlyUsing:'当前使用', switchBtn:'切换', noModel:'未选择模型',
@@ -80,7 +90,14 @@ const i18n = {
     syncCc:'Sync CC', switchStats:'Switch Stats', detectPackage:'Detect', queryQuota:'Quota', syncPreset:'Sync Preset' }
 };
 function t(k) { return i18n[currentLang][k] || i18n.en[k] || k; }
-function toggleLang() { currentLang = currentLang==='zh'?'en':'zh'; document.getElementById('langBtn').textContent = currentLang==='zh'?'中/EN':'EN/中'; applyLang(); }
+async function toggleLang() {
+  currentLang = currentLang === 'zh' ? 'en' : 'zh';
+  refreshLangButton();
+  applyLang();
+  if (window.electronAPI) {
+    await window.electronAPI.invoke('app-set-language', panelLangToAppLang(currentLang)).catch(() => {});
+  }
+}
 function applyLang() {
   document.querySelectorAll('[data-t]').forEach(el => { const k=el.getAttribute('data-t'); if(i18n[currentLang][k]) el.textContent=i18n[currentLang][k]; });
   const searchInput = document.getElementById('providerSearchInput');
@@ -689,8 +706,20 @@ async function initPanel() {
     return;
   }
 
+  const appLang = await window.electronAPI.invoke('app-get-language').catch(() => 'zh-CN');
+  currentLang = appLangToPanelLang(appLang);
+  refreshLangButton();
+  applyLang();
+
   await loadAll();
   window.electronAPI.on('model-changed',()=>{loadAll();loadModels();});
+  window.electronAPI.on('app-language-changed', (lang) => {
+    const mapped = appLangToPanelLang(lang);
+    if (mapped === currentLang) return;
+    currentLang = mapped;
+    refreshLangButton();
+    applyLang();
+  });
 }
 
 initPanel();

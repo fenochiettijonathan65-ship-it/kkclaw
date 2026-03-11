@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>EggClaw 孵化引导</title>
+<title>X Claw Setup Wizard</title>
 <style>
   :root {
     --wood-dark: #5a3a1a;
@@ -76,6 +76,31 @@
     letter-spacing: 2px;
     text-shadow: 1px 1px 0 var(--wood-dark), 2px 2px 0 rgba(0,0,0,0.3);
     font-family: 'Courier New', 'Consolas', monospace;
+  }
+  .lang-switch {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--parchment-dark);
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+  }
+  .lang-switch select {
+    border: 2px solid var(--wood-light);
+    background: rgba(0,0,0,0.25);
+    color: var(--parchment-dark);
+    border-radius: 2px;
+    padding: 2px 4px;
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    outline: none;
+  }
+  .lang-switch select:focus {
+    border-color: var(--gold);
   }
   .skip-btn {
     position: absolute;
@@ -862,19 +887,26 @@
 <body>
 
 <div class="wizard-header">
-  <h1>EggClaw 孵化引导</h1>
-  <button class="skip-btn" onclick="skipWizard()">SKIP</button>
+  <div class="lang-switch">
+    <span id="langLabel">语言</span>
+    <select id="wizardLanguage" onchange="changeWizardLanguage(this.value)">
+      <option value="zh-CN">中文</option>
+      <option value="en-US">English</option>
+    </select>
+  </div>
+  <h1 id="wizardTitle">X Claw 孵化引导</h1>
+  <button class="skip-btn" id="skipBtn" onclick="skipWizard()">SKIP</button>
 </div>
 
 <div class="progress-bar">
-  <div class="progress-dot active" data-step="-1" data-label="孵化仓" onclick="jumpToStep(-1)"></div>
-  <div class="progress-dot" data-step="0" data-label="心跳" onclick="jumpToStep(0)"></div>
-  <div class="progress-dot" data-step="1" data-label="大脑" onclick="jumpToStep(1)"></div>
-  <div class="progress-dot" data-step="2" data-label="触角" onclick="jumpToStep(2)"></div>
-  <div class="progress-dot" data-step="3" data-label="声带" onclick="jumpToStep(3)"></div>
-  <div class="progress-dot" data-step="4" data-label="核心" onclick="jumpToStep(4)"></div>
-  <div class="progress-dot" data-step="5" data-label="外观" onclick="jumpToStep(5)"></div>
-  <div class="progress-dot" data-step="6" data-label="验收" onclick="jumpToStep(6)"></div>
+  <div class="progress-dot active" data-step="-1" data-label="Prep" onclick="jumpToStep(-1)"></div>
+  <div class="progress-dot" data-step="0" data-label="1" onclick="jumpToStep(0)"></div>
+  <div class="progress-dot" data-step="1" data-label="2" onclick="jumpToStep(1)"></div>
+  <div class="progress-dot" data-step="2" data-label="3" onclick="jumpToStep(2)"></div>
+  <div class="progress-dot" data-step="3" data-label="4" onclick="jumpToStep(3)"></div>
+  <div class="progress-dot" data-step="4" data-label="5" onclick="jumpToStep(4)"></div>
+  <div class="progress-dot" data-step="5" data-label="6" onclick="jumpToStep(5)"></div>
+  <div class="progress-dot" data-step="6" data-label="7" onclick="jumpToStep(6)"></div>
 </div>
 
 <div class="chat-area" id="chatArea">
@@ -892,8 +924,152 @@
 <script>
 // ===== State =====
 let currentStep = -1;
-  const totalSteps = 8;
-  let maxVisitedStep = -1;
+const totalSteps = 8;
+let maxVisitedStep = -1;
+let uiLanguage = 'zh-CN';
+
+const WIZARD_I18N = {
+  'zh-CN': {
+    htmlLang: 'zh-CN',
+    title: 'X Claw 孵化引导',
+    headerTitle: 'X Claw 孵化引导',
+    langLabel: '语言',
+    skip: '跳过',
+    prev: '上一步',
+    next: '下一步',
+    done: '完成',
+    stepCounterEnv: '环境检测 / {total} 步',
+    stepCounter: '第 {current}/{total} 步',
+    dots: ['孵化仓', '心跳', '大脑', '触角', '声带', '核心', '外观', '验收'],
+    skipConfirm: '跳过孵化引导将使用默认配置，确定吗？',
+    envIntro1: '你好呀~ 我是你的孵化向导。(^_^) 欢迎来到 X Claw 孵化器~',
+    envIntro2: '在正式孵化之前，我先帮你检查孵化仓、心跳和基础供能，确保这颗蛋能顺利活起来。',
+    envTitle: '🔍 孵化仓预检',
+    envChecking: '正在检查孵化环境，请稍候...',
+    envNodeName: 'Node.js 18+（系统环境）',
+    envOpenclawName: 'OpenClaw 核心装置',
+    envGatewayName: '心跳通道状态',
+    envPythonName: 'Python 3.6+（可选，用于 EdgeTTS/CosyVoice）',
+    envStatusChecking: '检测中...',
+    envActionNodeDownload: '前往下载 Node.js',
+    envActionInstallOpenclaw: '一键安装 OpenClaw',
+    envActionStartGateway: '一键启动 Gateway',
+    envActionPythonDownload: '前往下载 Python',
+    envActionRetry: '🔄 重新检测',
+    envActionGoNext: '下一步：连接心跳 →',
+    envInstallBubble: '正在安装 OpenClaw，请稍候（约30秒）...',
+    envInstallOkBubble: '✅ OpenClaw 安装成功！',
+    envInstallFailBubble: '❌ 安装失败，请手动运行：',
+    envGatewayStartBubble: '正在启动 Gateway，最长等待20秒...',
+    envGatewayStartOkBubble: '✅ Gateway 启动成功！',
+    envSummaryPassTitle: '✅ 孵化仓检测通过！',
+    envSummaryPassBody: '可以继续唤醒这颗蛋了~',
+    envSummaryPythonOptional: '⚠️ Python 未安装，但这是可选的。如果需要 EdgeTTS 或 CosyVoice，请先安装 Python。',
+    envSummaryFailTitle: '❌ 环境未就绪',
+    envSummaryFailBody: 'Node.js、OpenClaw、Gateway 是首次启动的必需项。请先完成安装和启动，再继续。',
+    envSummaryMissingPrefix: '缺少',
+    envDetectErrorPrefix: '检测出错了: '
+  },
+  'en-US': {
+    htmlLang: 'en',
+    title: 'X Claw Setup Wizard',
+    headerTitle: 'X Claw Setup Wizard',
+    langLabel: 'Language',
+    skip: 'Skip',
+    prev: 'Back',
+    next: 'Next',
+    done: 'Finish',
+    stepCounterEnv: 'Environment / {total} steps',
+    stepCounter: 'Step {current}/{total}',
+    dots: ['Prep', 'Heartbeat', 'Brain', 'Channels', 'Voice', 'Core', 'Display', 'Review'],
+    skipConfirm: 'Skip setup wizard and use default configuration?',
+    envIntro1: 'Hi, I am your setup guide. Welcome to X Claw.',
+    envIntro2: 'Before hatching starts, I will check runtime, heartbeat, and base dependencies.',
+    envTitle: '🔍 Environment Preflight',
+    envChecking: 'Checking environment, please wait...',
+    envNodeName: 'Node.js 18+ (system runtime)',
+    envOpenclawName: 'OpenClaw core',
+    envGatewayName: 'Gateway heartbeat',
+    envPythonName: 'Python 3.6+ (optional, for EdgeTTS/CosyVoice)',
+    envStatusChecking: 'Checking...',
+    envActionNodeDownload: 'Download Node.js',
+    envActionInstallOpenclaw: 'Install OpenClaw',
+    envActionStartGateway: 'Start Gateway',
+    envActionPythonDownload: 'Download Python',
+    envActionRetry: '🔄 Recheck',
+    envActionGoNext: 'Next: heartbeat →',
+    envInstallBubble: 'Installing OpenClaw, please wait (about 30s)...',
+    envInstallOkBubble: '✅ OpenClaw installed successfully.',
+    envInstallFailBubble: '❌ Install failed. Please run manually:',
+    envGatewayStartBubble: 'Starting Gateway (up to 20s)...',
+    envGatewayStartOkBubble: '✅ Gateway started successfully.',
+    envSummaryPassTitle: '✅ Preflight passed!',
+    envSummaryPassBody: 'You can continue to wake up the egg.',
+    envSummaryPythonOptional: '⚠️ Python is optional. Install it only if you need EdgeTTS/CosyVoice.',
+    envSummaryFailTitle: '❌ Environment not ready',
+    envSummaryFailBody: 'Node.js, OpenClaw and Gateway are required for first launch.',
+    envSummaryMissingPrefix: 'Missing',
+    envDetectErrorPrefix: 'Preflight error: '
+  }
+};
+
+function normalizeWizardLanguage(lang) {
+  if (!lang || typeof lang !== 'string') return 'zh-CN';
+  if (lang === 'zh-CN' || lang === 'en-US') return lang;
+  return lang.toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN';
+}
+
+function tw(key, vars = {}) {
+  const dict = WIZARD_I18N[uiLanguage] || WIZARD_I18N['zh-CN'];
+  const fallback = WIZARD_I18N['zh-CN'];
+  let text = dict[key] || fallback[key] || key;
+  for (const [k, v] of Object.entries(vars)) {
+    text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+  }
+  return text;
+}
+
+function wl(zh, en) {
+  return uiLanguage === 'en-US' ? en : zh;
+}
+
+function applyWizardLanguage() {
+  const langDict = WIZARD_I18N[uiLanguage] || WIZARD_I18N['zh-CN'];
+  document.documentElement.lang = langDict.htmlLang || 'zh-CN';
+  document.title = tw('title');
+  const titleEl = document.getElementById('wizardTitle');
+  const skipBtn = document.getElementById('skipBtn');
+  const langLabel = document.getElementById('langLabel');
+  const langSelect = document.getElementById('wizardLanguage');
+  if (titleEl) titleEl.textContent = tw('headerTitle');
+  if (skipBtn) skipBtn.textContent = tw('skip');
+  if (langLabel) langLabel.textContent = tw('langLabel');
+  if (langSelect) langSelect.value = uiLanguage;
+
+  const dotLabels = tw('dots');
+  if (Array.isArray(dotLabels)) {
+    document.querySelectorAll('.progress-dot').forEach((dot, idx) => {
+      dot.dataset.label = dotLabels[idx] || String(idx);
+    });
+  }
+
+  const btnPrev = document.getElementById('btnPrev');
+  if (btnPrev) btnPrev.textContent = tw('prev');
+  updateProgress();
+}
+
+async function changeWizardLanguage(nextLang) {
+  const normalized = normalizeWizardLanguage(nextLang);
+  if (normalized === uiLanguage) return;
+  uiLanguage = normalized;
+  applyWizardLanguage();
+  try {
+    await wizardAPI.invoke('app-set-language', uiLanguage);
+  } catch {}
+  wizardAPI.invoke('wizard-save-display-settings', { uiLanguage }).catch(() => {});
+  clearChat();
+  await renderStep(currentStep);
+}
 let stepData = {
   gatewayConnected: false,
   gatewayToken: '',
@@ -915,12 +1091,19 @@ let stepData = {
 };
 
 const channelNames = {
-  feishu: '飞书 Feishu',
-  telegram: 'Telegram',
-  discord: 'Discord',
-  web: 'Web',
-  wecom: '企业微信 WeCom'
+  feishu: { 'zh-CN': '飞书 Feishu', 'en-US': 'Feishu' },
+  telegram: { 'zh-CN': 'Telegram', 'en-US': 'Telegram' },
+  discord: { 'zh-CN': 'Discord', 'en-US': 'Discord' },
+  web: { 'zh-CN': 'Web', 'en-US': 'Web' },
+  wecom: { 'zh-CN': '企业微信 WeCom', 'en-US': 'WeCom' }
 };
+
+function getChannelName(key) {
+  const label = channelNames[key];
+  if (!label) return key;
+  if (typeof label === 'string') return label;
+  return label[uiLanguage] || label['zh-CN'] || key;
+}
 
 const channelIcons = {
   feishu: '🐦',
@@ -1050,19 +1233,21 @@ function resetStepSkipFlags(step) {
 
 function updateProgress() {
   if (currentStep > maxVisitedStep) maxVisitedStep = currentStep;
-  document.querySelectorAll('.progress-dot').forEach((dot, i) => {
+  document.querySelectorAll('.progress-dot').forEach((dot) => {
     dot.classList.remove('active', 'done');
     const dotStep = parseInt(dot.dataset.step);
-      if (dotStep < currentStep) dot.classList.add('done');
+    if (dotStep < currentStep) dot.classList.add('done');
     else if (dotStep === currentStep) dot.classList.add('active');
   });
-  document.getElementById('stepLabel').textContent = currentStep === -1 ? `环境检测 / ${totalSteps}步` : `Step ${currentStep + 1}/${totalSteps - 1}`;
+  document.getElementById('stepLabel').textContent = currentStep === -1
+    ? tw('stepCounterEnv', { total: totalSteps })
+    : tw('stepCounter', { current: currentStep + 1, total: totalSteps - 1 });
   document.getElementById('btnPrev').style.visibility = currentStep > -1 ? 'visible' : 'hidden';
 
   if (currentStep === totalSteps - 1) {
-    document.getElementById('btnNext').textContent = '完成';
+    document.getElementById('btnNext').textContent = tw('done');
   } else {
-    document.getElementById('btnNext').textContent = '下一步';
+    document.getElementById('btnNext').textContent = tw('next');
   }
 }
 
@@ -1101,7 +1286,7 @@ function validateCurrentStep() {
   switch (currentStep) {
     case 0: // Gateway
       if (!stepData.gatewayConnected) {
-        addBubble('蛋宠的心跳还没连上呢，确定先跳过吗？', false);
+        addBubble(wl('蛋宠的心跳还没连上呢，确定先跳过吗？', 'Gateway heartbeat is not connected yet. Skip anyway?'), false);
         // Allow skip but warn — set a flag so next click goes through
         if (stepData._gatewaySkipWarned) return true;
         stepData._gatewaySkipWarned = true;
@@ -1110,7 +1295,7 @@ function validateCurrentStep() {
       return true;
     case 1: // Model
       if (!stepData.modelProvider) {
-        addBubble('蛋宠的大脑还没选好哦，确定先跳过吗？', false);
+        addBubble(wl('蛋宠的大脑还没选好哦，确定先跳过吗？', 'No model is configured yet. Skip anyway?'), false);
         if (stepData._modelSkipWarned) return true;
         stepData._modelSkipWarned = true;
         return false;
@@ -1121,7 +1306,7 @@ function validateCurrentStep() {
         const apiKeyEl = document.getElementById('tts-apikey');
         if (apiKeyEl) stepData.ttsApiKey = apiKeyEl.value.trim();
         if (!stepData.ttsApiKey) {
-          addBubble('声带还没喂入 API Key 哦，不填的话会回退到免费的 Edge TTS (^_^)', false);
+          addBubble(wl('声带还没喂入 API Key 哦，不填的话会回退到免费的 Edge TTS (^_^)', 'No API key for TTS. It will fall back to free Edge TTS.'), false);
           if (stepData._ttsSkipWarned) {
             stepData.ttsEngine = 'edge';
             return true;
@@ -1133,7 +1318,7 @@ function validateCurrentStep() {
       return true;
     case 4: // Agent Voice
       if (!stepData._agentVoiceConfigured) {
-        addBubble('⚠️ 还没写入孵化契约文件。请先点「🌀 注入核心」（再点一次强制跳过）', false);
+        addBubble(wl('⚠️ 还没写入孵化契约文件。请先点「🌀 注入核心」（再点一次强制跳过）', '⚠️ Core files are not written yet. Click "Infuse Core" first (click next twice to force skip).'), false);
         if (stepData._agentSkipWarned) return true;
         stepData._agentSkipWarned = true;
         return false;
@@ -1142,6 +1327,10 @@ function validateCurrentStep() {
     default:
       return true;
   }
+}
+
+async function goNext() {
+  await nextStep();
 }
 
 async function prevStep() {
@@ -1225,35 +1414,35 @@ async function renderStep(step) {
 
 // ─── Step 0 (-1): 环境预检 ───────────────────────
 async function renderEnvCheck() {
-  await addBubble('你好呀~ 我是你的孵化向导。(^_^) 欢迎来到 EggClaw 孵化器~');
-  await addBubble('在正式孵化之前，我先帮你检查孵化仓、心跳和基础供能，确保这颗蛋能顺利活起来。');
+  await addBubble(tw('envIntro1'));
+  await addBubble(tw('envIntro2'));
 
   addCard(`
-    <h3>🔍 孵化仓预检</h3>
-    <p style="font-size:11px;color:var(--text-medium);margin-bottom:10px;">正在检查孵化环境，请稍候...</p>
+    <h3>${tw('envTitle')}</h3>
+    <p style="font-size:11px;color:var(--text-medium);margin-bottom:10px;">${tw('envChecking')}</p>
 
     <div class="check-item" id="env-node">
       <span class="check-icon">⏳</span>
-      <span class="check-name">Node.js 18+（系统环境）</span>
-      <span class="check-status">检测中...</span>
+      <span class="check-name">${tw('envNodeName')}</span>
+      <span class="check-status">${tw('envStatusChecking')}</span>
     </div>
 
     <div class="check-item" id="env-openclaw">
       <span class="check-icon">⏳</span>
-      <span class="check-name">OpenClaw 核心装置</span>
-      <span class="check-status">检测中...</span>
+      <span class="check-name">${tw('envOpenclawName')}</span>
+      <span class="check-status">${tw('envStatusChecking')}</span>
     </div>
 
     <div class="check-item" id="env-gateway">
       <span class="check-icon">⏳</span>
-      <span class="check-name">心跳通道状态</span>
-      <span class="check-status">检测中...</span>
+      <span class="check-name">${tw('envGatewayName')}</span>
+      <span class="check-status">${tw('envStatusChecking')}</span>
     </div>
 
     <div class="check-item" id="env-python">
       <span class="check-icon">⏳</span>
-      <span class="check-name">Python 3.6+（可选，用于 EdgeTTS/CosyVoice）</span>
-      <span class="check-status">检测中...</span>
+      <span class="check-name">${tw('envPythonName')}</span>
+      <span class="check-status">${tw('envStatusChecking')}</span>
     </div>
 
     <div id="env-summary" class="hidden" style="margin-top:12px;padding:10px;border-radius:4px;border:2px solid;font-size:12px;"></div>
@@ -1267,25 +1456,29 @@ async function renderEnvCheck() {
     // Node.js
     setEnvItem('env-node', r.node.ok,
       r.node.ok ? `Node.js ${r.node.version} ✓` : `❌ ${r.node.error}`,
-      r.node.ok ? null : { label: '前往下载 Node.js', action: () => wizardAPI.invoke('open-external', 'https://nodejs.org/') }
+      r.node.ok ? null : { label: tw('envActionNodeDownload'), action: () => wizardAPI.invoke('open-external', 'https://nodejs.org/') }
     );
 
     // OpenClaw
     setEnvItem('env-openclaw', r.openclaw.ok,
-      r.openclaw.ok ? `OpenClaw 已安装 ${r.openclaw.version ? '(' + r.openclaw.version + ')' : ''}` : `未检测到 OpenClaw，请先安装`,
+      r.openclaw.ok
+        ? wl(`OpenClaw 已安装 ${r.openclaw.version ? `(${r.openclaw.version})` : ''}`, `OpenClaw installed ${r.openclaw.version ? `(${r.openclaw.version})` : ''}`)
+        : wl('未检测到 OpenClaw，请先安装', 'OpenClaw not found. Please install first.'),
       r.openclaw.ok ? null : {
-        label: '一键安装 OpenClaw',
+        label: tw('envActionInstallOpenclaw'),
         cmdHint: 'npm install -g openclaw',
         action: async (btn) => {
-          btn.textContent = '安装中...'; btn.disabled = true;
-          await addBubble('正在安装 OpenClaw，请稍候（约30秒）...');
+          btn.textContent = wl('安装中...', 'Installing...');
+          btn.disabled = true;
+          await addBubble(tw('envInstallBubble'));
           const result = await wizardAPI.invoke('wizard-install-openclaw');
           if (result.success) {
-            await addBubble('✅ OpenClaw 安装成功！');
+            await addBubble(tw('envInstallOkBubble'));
             renderEnvCheck();
           } else {
-            await addBubble(`❌ 安装失败，请手动运行：`);
-            btn.textContent = '一键安装 OpenClaw'; btn.disabled = false;
+            await addBubble(tw('envInstallFailBubble'));
+            btn.textContent = tw('envActionInstallOpenclaw');
+            btn.disabled = false;
           }
         }
       }
@@ -1293,20 +1486,24 @@ async function renderEnvCheck() {
 
     // Gateway 运行状态
     setEnvItem('env-gateway', r.gateway.ok,
-      r.gateway.ok ? `Gateway 运行中（端口 ${r.gateway.port}）✓` : `❌ ${r.gateway.error}`,
+      r.gateway.ok
+        ? wl(`Gateway 运行中（端口 ${r.gateway.port}）✓`, `Gateway running (port ${r.gateway.port}) ✓`)
+        : `❌ ${r.gateway.error}`,
       r.gateway.ok ? null : {
-        label: '一键启动 Gateway',
+        label: tw('envActionStartGateway'),
         action: async (btn) => {
-          btn.textContent = '启动中...'; btn.disabled = true;
-          await addBubble('正在启动 Gateway，最长等待20秒...');
+          btn.textContent = wl('启动中...', 'Starting...');
+          btn.disabled = true;
+          await addBubble(tw('envGatewayStartBubble'));
           const result = await wizardAPI.invoke('wizard-start-gateway');
           if (result.success) {
-            await addBubble('✅ Gateway 启动成功！');
-            setEnvItem('env-gateway', true, 'Gateway 运行中 ✓', null);
+            await addBubble(tw('envGatewayStartOkBubble'));
+            setEnvItem('env-gateway', true, wl('Gateway 运行中 ✓', 'Gateway running ✓'), null);
             updateEnvSummary(r, true);
           } else {
-            await addBubble(`❌ 启动失败: ${result.error}`);
-            btn.textContent = '一键启动 Gateway'; btn.disabled = false;
+            await addBubble(wl(`❌ 启动失败: ${result.error}`, `❌ Start failed: ${result.error}`));
+            btn.textContent = tw('envActionStartGateway');
+            btn.disabled = false;
           }
         }
       }
@@ -1316,10 +1513,13 @@ async function renderEnvCheck() {
     setEnvItem('env-python',
       r.python.ok ? true : 'warn',
       r.python.ok
-        ? `${r.python.version} (${r.python.command}) ✓  EdgeTTS / CosyVoice 可用`
+        ? wl(
+          `${r.python.version} (${r.python.command}) ✓  EdgeTTS / CosyVoice 可用`,
+          `${r.python.version} (${r.python.command}) ✓  EdgeTTS / CosyVoice available`
+        )
         : `⚠️ ${r.python.error}`,
       r.python.ok ? null : {
-        label: '前往下载 Python',
+        label: tw('envActionPythonDownload'),
         action: () => wizardAPI.invoke('open-external', 'https://www.python.org/downloads/')
       }
     );
@@ -1327,7 +1527,7 @@ async function renderEnvCheck() {
     updateEnvSummary(r);
 
   } catch (err) {
-    await addBubble(`检测出错了: ${err.message} (>_<)`);
+    await addBubble(`${tw('envDetectErrorPrefix')}${err.message}`);
   }
 }
 
@@ -1336,38 +1536,38 @@ function friendlyError(raw) {
   if (!raw) return '';
   const msg = String(raw);
   // 网络/连接类
-  if (msg.includes('ECONNREFUSED') && msg.includes('18789')) return 'Gateway 没有运行，请先启动 Gateway';
-  if (msg.includes('ECONNREFUSED')) return '连接被拒绝，请检查服务是否运行';
-  if (msg.includes('ETIMEDOUT') || msg.includes('timeout')) return '网络超时，请检查网络连接或代理设置';
-  if (msg.includes('ENOTFOUND')) return 'DNS 解析失败，请检查网络连接';
-  if (msg.includes('ECONNRESET')) return '连接被重置，可能是网络不稳定';
-  if (msg.includes('ENETUNREACH')) return '网络不可达，请检查网络连接';
+  if (msg.includes('ECONNREFUSED') && msg.includes('18789')) return wl('Gateway 没有运行，请先启动 Gateway', 'Gateway is not running. Please start it first.');
+  if (msg.includes('ECONNREFUSED')) return wl('连接被拒绝，请检查服务是否运行', 'Connection refused. Check whether the service is running.');
+  if (msg.includes('ETIMEDOUT') || msg.includes('timeout')) return wl('网络超时，请检查网络连接或代理设置', 'Network timeout. Check your connection or proxy.');
+  if (msg.includes('ENOTFOUND')) return wl('DNS 解析失败，请检查网络连接', 'DNS lookup failed. Check your network.');
+  if (msg.includes('ECONNRESET')) return wl('连接被重置，可能是网络不稳定', 'Connection reset. Network may be unstable.');
+  if (msg.includes('ENETUNREACH')) return wl('网络不可达，请检查网络连接', 'Network unreachable. Check your connection.');
   // API 鉴权类
-  if (msg.includes('401') || msg.includes('Unauthorized')) return 'API Key 无效或已过期，请检查是否完整复制';
-  if (msg.includes('403') || msg.includes('Forbidden')) return 'API Key 权限不足，请确认账户余额或权限';
-  if (msg.includes('429') || msg.includes('rate limit') || msg.includes('Too Many Requests')) return '请求过于频繁（限速），请稍等几秒再试';
-  if (msg.includes('402') || msg.includes('Payment Required')) return '账户余额不足，请充值后重试';
-  if (msg.includes('500') || msg.includes('Internal Server Error')) return 'API 服务器错误，请稍后重试';
-  if (msg.includes('503') || msg.includes('Service Unavailable')) return 'API 服务暂时不可用，请稍后重试';
+  if (msg.includes('401') || msg.includes('Unauthorized')) return wl('API Key 无效或已过期，请检查是否完整复制', 'API key is invalid or expired. Check if it was copied completely.');
+  if (msg.includes('403') || msg.includes('Forbidden')) return wl('API Key 权限不足，请确认账户余额或权限', 'API key has insufficient permissions. Check balance and permissions.');
+  if (msg.includes('429') || msg.includes('rate limit') || msg.includes('Too Many Requests')) return wl('请求过于频繁（限速），请稍等几秒再试', 'Rate limit reached. Wait a few seconds and retry.');
+  if (msg.includes('402') || msg.includes('Payment Required')) return wl('账户余额不足，请充值后重试', 'Insufficient balance. Recharge and retry.');
+  if (msg.includes('500') || msg.includes('Internal Server Error')) return wl('API 服务器错误，请稍后重试', 'API server error. Try again later.');
+  if (msg.includes('503') || msg.includes('Service Unavailable')) return wl('API 服务暂时不可用，请稍后重试', 'API service unavailable. Try again later.');
   // Node.js/文件类
-  if (msg.includes('ENOENT')) return '文件或目录不存在，请检查安装是否完整';
-  if (msg.includes('ENOTDIR')) return '路径错误（文件当成了目录），请重启应用';
-  if (msg.includes('EACCES') || msg.includes('EPERM')) return '权限不足，请以管理员身份运行';
-  if (msg.includes('ENOSPC')) return '磁盘空间不足，请清理磁盘后重试';
+  if (msg.includes('ENOENT')) return wl('文件或目录不存在，请检查安装是否完整', 'File or directory not found. Check installation integrity.');
+  if (msg.includes('ENOTDIR')) return wl('路径错误（文件当成了目录），请重启应用', 'Path type error (file used as directory). Restart app.');
+  if (msg.includes('EACCES') || msg.includes('EPERM')) return wl('权限不足，请以管理员身份运行', 'Permission denied. Run with administrator privileges.');
+  if (msg.includes('ENOSPC')) return wl('磁盘空间不足，请清理磁盘后重试', 'Insufficient disk space. Free space and retry.');
   // OpenClaw 类
-  if (msg.includes('openclaw') && msg.includes('不存在')) return 'OpenClaw 未安装，请先运行: npm install -g openclaw';
-  if (msg.includes('not found') && msg.includes('openclaw')) return 'OpenClaw 命令未找到，请重新安装';
-  if (msg.includes('port') && msg.includes('18789')) return 'Gateway 端口 18789 被占用，请关闭占用程序或重启电脑';
+  if (msg.includes('openclaw') && msg.includes('不存在')) return wl('OpenClaw 未安装，请先运行: npm install -g openclaw', 'OpenClaw is not installed. Run: npm install -g openclaw');
+  if (msg.includes('not found') && msg.includes('openclaw')) return wl('OpenClaw 命令未找到，请重新安装', 'OpenClaw command not found. Reinstall it.');
+  if (msg.includes('port') && msg.includes('18789')) return wl('Gateway 端口 18789 被占用，请关闭占用程序或重启电脑', 'Gateway port 18789 is occupied. Close the conflicting process or reboot.');
   // Python 类
   if (msg.includes('No module named')) {
     const m = msg.match(/No module named '?([^'"\s]+)'?/);
-    const mod = m?.[1] || '模块';
-    return `Python 包 "${mod}" 未安装，请运行: pip install ${mod}`;
+    const mod = m?.[1] || wl('模块', 'module');
+    return wl(`Python 包 "${mod}" 未安装，请运行: pip install ${mod}`, `Python package "${mod}" is missing. Run: pip install ${mod}`);
   }
-  if (msg.includes('python') && msg.includes('not found')) return 'Python 未安装或不在 PATH 中，请安装 Python 3.6+';
+  if (msg.includes('python') && msg.includes('not found')) return wl('Python 未安装或不在 PATH 中，请安装 Python 3.6+', 'Python is not installed or not in PATH. Install Python 3.6+.');
   // 安装类
-  if (msg.includes('npm ERR') && msg.includes('EACCES')) return 'npm 权限不足，请以管理员身份运行命令行';
-  if (msg.includes('npm ERR') && msg.includes('network')) return 'npm 网络错误，请检查网络或换源: npm config set registry https://registry.npmmirror.com';
+  if (msg.includes('npm ERR') && msg.includes('EACCES')) return wl('npm 权限不足，请以管理员身份运行命令行', 'npm permission denied. Run terminal as administrator.');
+  if (msg.includes('npm ERR') && msg.includes('network')) return wl('npm 网络错误，请检查网络或换源: npm config set registry https://registry.npmmirror.com', 'npm network error. Check network or change registry: npm config set registry https://registry.npmmirror.com');
   // 返回原始（截断）
   return msg.length > 80 ? msg.substring(0, 80) + '...' : msg;
 }
@@ -1376,7 +1576,7 @@ function friendlyError(raw) {
 function copyCmd(cmd, btnEl) {
   navigator.clipboard.writeText(cmd).then(() => {
     const orig = btnEl.textContent;
-    btnEl.textContent = '✅ 已复制';
+    btnEl.textContent = wl('✅ 已复制', '✅ Copied');
     btnEl.style.background = 'var(--grass-light)';
     btnEl.style.color = '#fff';
     setTimeout(() => {
@@ -1392,7 +1592,7 @@ function copyCmd(cmd, btnEl) {
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    btnEl.textContent = '✅ 已复制';
+    btnEl.textContent = wl('✅ 已复制', '✅ Copied');
     setTimeout(() => { btnEl.textContent = '📋'; }, 1500);
   });
 }
@@ -1403,7 +1603,7 @@ function cmdBlock(cmd, lang = '') {
   return `
     <div class="cmd-block" id="${id}">
       <code>${escapeHtml(cmd)}</code>
-      <button class="copy-btn" onclick="copyCmd('${cmd.replace(/'/g, "\\'")}', this)" title="复制命令">📋</button>
+      <button class="copy-btn" onclick="copyCmd('${cmd.replace(/'/g, "\\'")}', this)" title="${wl('复制命令', 'Copy command')}">📋</button>
     </div>
   `;
 }
@@ -1472,13 +1672,13 @@ function updateEnvSummary(r, gatewayJustStarted = false) {
     summary.style.background = '#e8f5e9';
     summary.style.borderColor = 'var(--grass-light)';
     summary.innerHTML = `
-      <strong>✅ 孵化仓检测通过！</strong> 可以继续唤醒这颗蛋了~
-      ${!r.python.ok ? '<br><span style="color:#f57f17;">⚠️ Python 未安装，但这是可选的。如果需要 EdgeTTS 或 CosyVoice，请先安装 Python。</span>' : ''}
+      <strong>${tw('envSummaryPassTitle')}</strong> ${tw('envSummaryPassBody')}
+      ${!r.python.ok ? `<br><span style="color:#f57f17;">${tw('envSummaryPythonOptional')}</span>` : ''}
     `;
     actions.classList.remove('hidden');
     actions.innerHTML = `
       <div class="btn-row">
-        <button class="btn btn-primary" onclick="goNext()">下一步：连接心跳 →</button>
+        <button class="btn btn-primary" onclick="goNext()">${tw('envActionGoNext')}</button>
       </div>
     `;
   } else {
@@ -1487,38 +1687,39 @@ function updateEnvSummary(r, gatewayJustStarted = false) {
     const missing = [];
     if (!r.node.ok) missing.push('Node.js 18+');
     if (!r.openclaw.ok) missing.push('OpenClaw');
-    if (!gatewayOk) missing.push('Gateway 运行中');
+    if (!gatewayOk) missing.push(wl('Gateway 运行中', 'Gateway running'));
+    const separator = uiLanguage === 'en-US' ? ', ' : '、';
     summary.innerHTML = `
-      <strong>❌ 环境未就绪</strong> — 缺少: ${missing.join('、')}<br>
-      <span style="color:var(--text-medium);">Node.js、OpenClaw、Gateway 是首次启动的必需项。请先完成安装和启动，再继续。</span>
+      <strong>${tw('envSummaryFailTitle')}</strong> — ${tw('envSummaryMissingPrefix')}: ${missing.join(separator)}<br>
+      <span style="color:var(--text-medium);">${tw('envSummaryFailBody')}</span>
     `;
     actions.classList.remove('hidden');
     actions.innerHTML = `
       <div class="btn-row">
-        <button class="btn btn-test" onclick="renderEnvCheck()">🔄 重新检测</button>
+        <button class="btn btn-test" onclick="renderEnvCheck()">${tw('envActionRetry')}</button>
       </div>
     `;
   }
 }
 async function renderStep1() {
-  await addBubble('继续吧，我们来把这颗蛋的心跳正式接通。(^_^)');
-  await addBubble('先来连上蛋宠的心跳。没有这一步，它还醒不过来。');
-  await addBubble('我先去找找本机的心跳通道... (o_O)');
+  await addBubble(wl('继续吧，我们来把这颗蛋的心跳正式接通。(^_^)', 'Next, let us connect the egg heartbeat.'));
+  await addBubble(wl('先来连上蛋宠的心跳。没有这一步，它还醒不过来。', 'Heartbeat is required before it can wake up.'));
+  await addBubble(wl('我先去找找本机的心跳通道... (o_O)', 'I will scan local Gateway heartbeat now...'));
 
   const card = addCard(`
-    <h3>OpenClaw 心跳连接</h3>
+    <h3>${wl('OpenClaw 心跳连接', 'OpenClaw Heartbeat')}</h3>
     <div class="status-item">
       <div class="status-icon loading" id="gw-status-icon"></div>
-      <span id="gw-status-text">正在检测心跳通道...</span>
+      <span id="gw-status-text">${wl('正在检测心跳通道...', 'Checking heartbeat channel...')}</span>
     </div>
     <div id="gw-manual" class="hidden">
       <div class="manual-input-area">
         <div class="form-group">
-          <label>心跳令牌（手动输入）</label>
-          <input type="text" class="form-input" id="gw-token-input" placeholder="请输入你的 Gateway Token">
+          <label>${wl('心跳令牌（手动输入）', 'Gateway token (manual)')}</label>
+          <input type="text" class="form-input" id="gw-token-input" placeholder="${wl('请输入你的 Gateway Token', 'Enter your Gateway token')}">
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary btn-small" onclick="testGatewayManual()">测试心跳</button>
+          <button class="btn btn-primary btn-small" onclick="testGatewayManual()">${wl('测试心跳', 'Test heartbeat')}</button>
         </div>
       </div>
     </div>
@@ -1533,30 +1734,30 @@ async function renderStep1() {
     if (result.connected) {
       icon.className = 'status-icon success';
       icon.textContent = '✓';
-      text.textContent = `心跳连接成功 (端口 ${result.port})`;
+      text.textContent = wl(`心跳连接成功 (端口 ${result.port})`, `Heartbeat connected (port ${result.port})`);
       stepData.gatewayConnected = true;
       stepData.gatewayToken = result.token;
-      await addBubble('找到啦，蛋宠的心跳已经接上！✧*。(o^_^o)✧*。');
+      await addBubble(wl('找到啦，蛋宠的心跳已经接上！✧*。(o^_^o)✧*。', 'Done. Heartbeat is connected.'));
     } else {
       icon.className = 'status-icon fail';
       icon.textContent = '✗';
       if (result.token) {
-        text.textContent = `找到了令牌但心跳接入失败 (端口 ${result.port})`;
+        text.textContent = wl(`找到了令牌但心跳接入失败 (端口 ${result.port})`, `Token found but heartbeat failed (port ${result.port})`);
         document.getElementById('gw-token-input').value = result.token;
       } else {
-        text.textContent = '未检测到心跳通道';
+        text.textContent = wl('未检测到心跳通道', 'No heartbeat channel detected');
       }
       document.getElementById('gw-manual').classList.remove('hidden');
-      await addBubble('诶？好像没找到呢 (T_T) 请手动输入 Token 试试~');
+      await addBubble(wl('诶？好像没找到呢 (T_T) 请手动输入 Token 试试~', 'No heartbeat found. Try manual token input.'));
     }
   } catch (err) {
     const icon = document.getElementById('gw-status-icon');
     const text = document.getElementById('gw-status-text');
     icon.className = 'status-icon fail';
     icon.textContent = '✗';
-    text.textContent = '检测出错: ' + err.message;
+    text.textContent = wl('检测出错: ', 'Check failed: ') + err.message;
     document.getElementById('gw-manual').classList.remove('hidden');
-    await addBubble('呜...检测出错了 (>_<) 请手动输入 Token 试试~');
+    await addBubble(wl('呜...检测出错了 (>_<) 请手动输入 Token 试试~', 'Check failed. Try manual token input.'));
   }
 }
 
@@ -1568,35 +1769,35 @@ async function testGatewayManual() {
   const text = document.getElementById('gw-status-text');
   icon.className = 'status-icon loading';
   icon.textContent = '';
-  text.textContent = '正在测试心跳...';
+  text.textContent = wl('正在测试心跳...', 'Testing heartbeat...');
 
   try {
     const result = await wizardAPI.invoke('wizard-test-gateway', token);
     if (result.success) {
       icon.className = 'status-icon success';
       icon.textContent = '✓';
-      text.textContent = '心跳连接成功！';
+      text.textContent = wl('心跳连接成功！', 'Heartbeat connected!');
       stepData.gatewayConnected = true;
       stepData.gatewayToken = token;
       document.getElementById('gw-manual').classList.add('hidden');
-      await addBubble('心跳接通了，这颗蛋现在能稳定供能了。✧*。(o^_^o)✧*。');
+      await addBubble(wl('心跳接通了，这颗蛋现在能稳定供能了。✧*。(o^_^o)✧*。', 'Heartbeat is online. Stable power is ready.'));
     } else {
       icon.className = 'status-icon fail';
       icon.textContent = '✗';
-      text.textContent = '心跳接入失败: ' + (result.error || '未知错误');
-      await addBubble('还是不行呢... (T_T) 请先确认 Gateway 已启动~');
+      text.textContent = wl('心跳接入失败: ', 'Heartbeat failed: ') + (result.error || wl('未知错误', 'unknown error'));
+      await addBubble(wl('还是不行呢... (T_T) 请先确认 Gateway 已启动~', 'Still failed. Please confirm Gateway is running.'));
     }
   } catch (err) {
     icon.className = 'status-icon fail';
     icon.textContent = '✗';
-    text.textContent = '测试出错: ' + err.message;
+    text.textContent = wl('测试出错: ', 'Test error: ') + err.message;
   }
 }
 
 // ─── Step 2: AI Model Config ───────────────────────
 async function renderStepModel() {
-  await addBubble('接下来给蛋宠挑一颗大脑。(^_^)');
-  await addBubble('选好模型提供商并填入 API Key，它才知道怎么思考、怎么回应。');
+  await addBubble(wl('接下来给蛋宠挑一颗大脑。(^_^)', 'Next, choose a brain model for your egg.'));
+  await addBubble(wl('选好模型提供商并填入 API Key，它才知道怎么思考、怎么回应。', 'Select a provider and fill API key so it can think and reply.'));
 
   // Load existing config
   let currentConfig = { providers: {}, primary: '' };
@@ -1616,17 +1817,17 @@ async function renderStepModel() {
   stepData.modelId = currentModelId;
 
   if (currentProvider && currentConfig.providers[currentProvider]?.hasKey) {
-    await addBubble('检测到已配置: ' + currentConfig.primary + ' (^_^)');
+    await addBubble(wl('检测到已配置: ', 'Detected configured model: ') + currentConfig.primary + ' (^_^)');
   }
 
   const providerList = [
-    { key: 'anthropic', name: 'Anthropic', desc: 'Claude Opus 4 / Sonnet 4 / Haiku', badge: 'recommend', badgeText: '推荐' },
+    { key: 'anthropic', name: 'Anthropic', desc: 'Claude Opus 4 / Sonnet 4 / Haiku', badge: 'recommend', badgeText: wl('推荐', 'Recommend') },
     { key: 'openai', name: 'OpenAI', desc: 'GPT-4o / o3 / o4-mini', badge: '', badgeText: '' },
     { key: 'google', name: 'Google AI', desc: 'Gemini 2.5 Pro / 2.0 Flash', badge: '', badgeText: '' },
     { key: 'deepseek', name: 'DeepSeek', desc: 'DeepSeek V3 / R1', badge: '', badgeText: '' },
-    { key: 'openrouter', name: 'OpenRouter', desc: '多模型中转 (Claude/GPT/Gemini)', badge: '', badgeText: '' },
-    { key: 'zhipu-glm', name: '智谱 GLM', desc: 'GLM-4 Plus', badge: '', badgeText: '' },
-    { key: 'qwen-coder', name: '通义千问 Qwen', desc: 'Qwen Max / Turbo', badge: '', badgeText: '' },
+    { key: 'openrouter', name: 'OpenRouter', desc: wl('多模型中转 (Claude/GPT/Gemini)', 'Multi-model relay (Claude/GPT/Gemini)'), badge: '', badgeText: '' },
+    { key: 'zhipu-glm', name: wl('智谱 GLM', 'Zhipu GLM'), desc: 'GLM-4 Plus', badge: '', badgeText: '' },
+    { key: 'qwen-coder', name: wl('通义千问 Qwen', 'Qwen'), desc: 'Qwen Max / Turbo', badge: '', badgeText: '' },
     { key: 'kimi', name: 'Kimi', desc: 'Kimi K2', badge: '', badgeText: '' },
     { key: 'minimax', name: 'MiniMax', desc: 'MiniMax M1', badge: '', badgeText: '' },
   ];
@@ -1648,8 +1849,8 @@ async function renderStepModel() {
   const customSelected = currentProvider === 'custom-proxy' ? 'selected' : '';
   providerCards += `
     <div class="engine-card full-width ${customSelected}" onclick="selectCustomProvider(this)">
-      <div class="engine-name">自定义中转站</div>
-      <div class="engine-desc">自定义 Base URL，支持任意兼容 OpenAI / Anthropic 协议的服务</div>
+      <div class="engine-name">${wl('自定义中转站', 'Custom Relay')}</div>
+      <div class="engine-desc">${wl('自定义 Base URL，支持任意兼容 OpenAI / Anthropic 协议的服务', 'Custom Base URL for any OpenAI / Anthropic compatible endpoint')}</div>
     </div>
   `;
 
@@ -1659,22 +1860,22 @@ async function renderStepModel() {
   const maskedKey = currentConfig.providers[currentProvider]?.maskedKey || '';
 
   addCard(`
-    <h3>AI 大脑配置</h3>
+    <h3>${wl('AI 大脑配置', 'AI Brain Configuration')}</h3>
     <div class="provider-grid">
       ${providerCards}
     </div>
 
     <div id="model-config-area" class="${isKnown ? '' : 'hidden'}" style="margin-top: 12px;">
       <div class="form-group">
-        <label>大脑型号</label>
+        <label>${wl('大脑型号', 'Model')}</label>
         <select class="form-input" id="model-select" onchange="onModelSelect(this.value)">
           ${modelOptions}
         </select>
       </div>
       <div class="form-group">
-        <label>API Key ${maskedKey ? '(已配置: ' + escapeHtml(maskedKey) + ')' : ''}</label>
+        <label>API Key ${maskedKey ? wl('(已配置: ', '(Configured: ') + escapeHtml(maskedKey) + ')' : ''}</label>
         <div class="input-wrap">
-          <input type="password" class="form-input" id="model-apikey" placeholder="输入新的 API Key（留空保持原有）">
+          <input type="password" class="form-input" id="model-apikey" placeholder="${wl('输入新的 API Key（留空保持原有）', 'Enter new API key (leave blank to keep current)')}">
           <button class="eye-btn" onclick="toggleModelApiKeyVisibility()" id="model-eye-btn" type="button">👁</button>
         </div>
       </div>
@@ -1686,39 +1887,39 @@ async function renderStepModel() {
         <input type="text" class="form-input" id="custom-baseurl" placeholder="https://api.example.com/v1" value="${isCustom && currentConfig.providers['custom-proxy']?.baseUrl ? escapeHtml(currentConfig.providers['custom-proxy'].baseUrl) : ''}">
       </div>
       <div class="form-group">
-        <label>API 协议</label>
+        <label>${wl('API 协议', 'API Protocol')}</label>
         <select class="form-input" id="custom-api-type">
           <option value="openai-completions" ${isCustom && currentConfig.providers['custom-proxy']?.api === 'openai-completions' ? 'selected' : ''}>OpenAI Chat Completions</option>
           <option value="anthropic-messages" ${isCustom && currentConfig.providers['custom-proxy']?.api === 'anthropic-messages' ? 'selected' : ''}>Anthropic Messages API</option>
         </select>
       </div>
       <div class="form-group">
-        <label>模型 ID</label>
-        <input type="text" class="form-input" id="custom-model-id" placeholder="如 claude-sonnet-4-20250514" value="${isCustom ? escapeHtml(currentModelId) : ''}">
+        <label>${wl('模型 ID', 'Model ID')}</label>
+        <input type="text" class="form-input" id="custom-model-id" placeholder="${wl('如 claude-sonnet-4-20250514', 'e.g. claude-sonnet-4-20250514')}" value="${isCustom ? escapeHtml(currentModelId) : ''}">
       </div>
       <div class="form-group">
-        <label>API Key ${isCustom && maskedKey ? '(已配置: ' + escapeHtml(maskedKey) + ')' : ''}</label>
+        <label>API Key ${isCustom && maskedKey ? wl('(已配置: ', '(Configured: ') + escapeHtml(maskedKey) + ')' : ''}</label>
         <div class="input-wrap">
-          <input type="password" class="form-input" id="custom-apikey" placeholder="输入 API Key">
+          <input type="password" class="form-input" id="custom-apikey" placeholder="${wl('输入 API Key', 'Enter API key')}">
           <button class="eye-btn" onclick="toggleCustomApiKeyVisibility()" id="custom-eye-btn" type="button">👁</button>
         </div>
       </div>
     </div>
 
     <div style="margin-top: 8px; padding: 8px 12px; border-radius: 2px; border: 2px solid var(--wood-light); background: linear-gradient(135deg, #f0e6ff, #e8f0ff); font-size: 11px; color: var(--text-medium); line-height: 1.6;">
-      如果没有合适的可用套餐，也可以联系 KK 提供 Gemini / Claude / Codex 满血双ISP稳定不降智的 Coding Plan 拼车服务~<br>
+      ${wl('如果没有合适的可用套餐，也可以联系 KK 提供 Gemini / Claude / Codex 满血双ISP稳定不降智的 Coding Plan 拼车服务~', 'If you need a more stable Coding Plan package, you can contact KK for Gemini / Claude / Codex options.') }<br>
       <a href="#" onclick="wizardAPI.invoke('open-external', 'https://discord.com/users/reribth_75722'); return false;" style="color: #7c6bf0; font-weight: 600; text-decoration: underline; cursor: pointer;">Discord: reribth_75722</a>
     </div>
 
     <div class="btn-row">
-      <button class="btn btn-test" onclick="testModelConfig()">测试大脑</button>
+      <button class="btn btn-test" onclick="testModelConfig()">${wl('测试大脑', 'Test model')}</button>
     </div>
   `);
 }
 
 function getModelOptions(provider, selectedModelId) {
   const models = modelPresets[provider] || [];
-  if (models.length === 0) return '<option value="">请先选择提供商</option>';
+  if (models.length === 0) return `<option value="">${wl('请先选择提供商', 'Please select provider first')}</option>`;
   return models.map(m =>
     `<option value="${m.id}" ${m.id === selectedModelId ? 'selected' : ''}>${m.name}</option>`
   ).join('');
@@ -1788,7 +1989,7 @@ async function saveModelConfig() {
     const apiKey = document.getElementById('custom-apikey')?.value.trim() || '';
     // BaseURL 格式校验
     if (baseUrl && !/^https?:\/\/.+/i.test(baseUrl)) {
-      await addBubble('Base URL 格式不对哦~ 需要以 http:// 或 https:// 开头 (>_<)');
+      await addBubble(wl('Base URL 格式不对哦~ 需要以 http:// 或 https:// 开头 (>_<)', 'Invalid Base URL. It must start with http:// or https://'));
       return;
     }
     if (modelId) {
@@ -1813,31 +2014,31 @@ async function saveModelConfig() {
 
 async function testModelConfig() {
   if (!stepData.modelProvider) {
-    await addBubble('请先给蛋宠选一个大脑提供商哦~ (>_<)');
+    await addBubble(wl('请先给蛋宠选一个大脑提供商哦~ (>_<)', 'Please choose a provider first.'));
     return;
   }
 
   // Save first, then check
-  await addBubble('正在保存并检测这颗大脑... (o_O)');
+  await addBubble(wl('正在保存并检测这颗大脑... (o_O)', 'Saving and checking model config...'));
 
   try {
     await saveModelConfig();
 
     const checkResult = await wizardAPI.invoke('wizard-check-model-config');
     if (checkResult.status === 'pass') {
-      await addBubble('大脑配置已保存！' + checkResult.message + ' ✧*。(o^_^o)✧*。');
+      await addBubble(wl('大脑配置已保存！', 'Model config saved! ') + checkResult.message + ' ✧*。(o^_^o)✧*。');
     } else {
-      await addBubble('这颗大脑暂时还没接通: ' + checkResult.message + ' (T_T)');
+      await addBubble(wl('这颗大脑暂时还没接通: ', 'Model not ready yet: ') + checkResult.message + ' (T_T)');
     }
   } catch (err) {
-    await addBubble('测试出错: ' + err.message + ' (>_<)');
+    await addBubble(wl('测试出错: ', 'Test error: ') + err.message + ' (>_<)');
   }
 }
 
 // ─── Step 3: Channel Config ───────────────────────
 async function renderStep2() {
-  await addBubble('接下来给蛋宠装上触角。(^_^)');
-  await addBubble('每根触角都代表一个消息入口，你可以分别决定它是否播报、是否显示字幕。');
+  await addBubble(wl('接下来给蛋宠装上触角。(^_^)', 'Now configure message channels.'));
+  await addBubble(wl('每根触角都代表一个消息入口，你可以分别决定它是否播报、是否显示字幕。', 'Each channel can independently enable voice and captions.'));
 
   let channelRows = '';
   for (const [ch, cfg] of Object.entries(stepData.channels)) {
@@ -1845,15 +2046,15 @@ async function renderStep2() {
       <div class="toggle-row">
         <div class="toggle-label">
           <span>${channelIcons[ch]}</span>
-          <span>${channelNames[ch]}</span>
+          <span>${getChannelName(ch)}</span>
         </div>
         <div class="toggle-controls">
-          <span class="toggle-tag">Voice</span>
+          <span class="toggle-tag">${wl('语音', 'Voice')}</span>
           <label class="switch">
             <input type="checkbox" id="voice-${ch}" ${cfg.voice ? 'checked' : ''}>
             <span class="slider"></span>
           </label>
-          <span class="toggle-tag">Lyrics</span>
+          <span class="toggle-tag">${wl('字幕', 'Captions')}</span>
           <label class="switch">
             <input type="checkbox" id="lyrics-${ch}" ${cfg.lyrics ? 'checked' : ''}>
             <span class="slider"></span>
@@ -1864,15 +2065,15 @@ async function renderStep2() {
   }
 
   addCard(`
-    <h3>触角与消息入口</h3>
+    <h3>${wl('触角与消息入口', 'Channels')}</h3>
     ${channelRows}
   `);
 }
 
 // ─── Step 3: TTS Engine ───────────────────────
 async function renderStep3() {
-  await addBubble('现在来给蛋宠挑一副声带吧~ (*^_^*)');
-  await addBubble('推荐使用 MiniMax Speech 2.5 Turbo，性价比超高的！');
+  await addBubble(wl('现在来给蛋宠挑一副声带吧~ (*^_^*)', 'Now choose a TTS voice engine.'));
+  await addBubble(wl('推荐使用 MiniMax Speech 2.5 Turbo，性价比超高的！', 'MiniMax Speech 2.5 Turbo is recommended.'));
 
   // Load existing config
   try {
@@ -1890,76 +2091,76 @@ async function renderStep3() {
   } catch (e) { /* use defaults */ }
 
   addCard(`
-    <h3>声带与语音引擎</h3>
+    <h3>${wl('声带与语音引擎', 'Voice & TTS Engine')}</h3>
     <div class="engine-list">
       <div class="engine-card ${stepData.ttsEngine === 'minimax-hd' ? 'selected' : ''}" onclick="selectEngine('minimax-hd', this)">
         <div class="engine-name">MiniMax Speech 2.8 HD</div>
-        <div class="engine-desc">最佳音质，情感丰富，需要 API Key</div>
-        <span class="engine-badge best">最佳音质</span>
+        <div class="engine-desc">${wl('最佳音质，情感丰富，需要 API Key', 'Best quality, rich emotion, requires API key')}</div>
+        <span class="engine-badge best">${wl('最佳音质', 'Best quality')}</span>
       </div>
       <div class="engine-card ${stepData.ttsEngine === 'minimax' ? 'selected' : ''}" onclick="selectEngine('minimax', this)">
         <div class="engine-name">MiniMax Speech 2.5 Turbo</div>
-        <div class="engine-desc">性价比高，速度快，需要 API Key</div>
-        <span class="engine-badge recommend">推荐</span>
+        <div class="engine-desc">${wl('性价比高，速度快，需要 API Key', 'Great value and speed, requires API key')}</div>
+        <span class="engine-badge recommend">${wl('推荐', 'Recommend')}</span>
       </div>
       <div class="engine-card ${stepData.ttsEngine === 'cosyvoice' ? 'selected' : ''}" onclick="selectEngine('cosyvoice', this)">
-        <div class="engine-name">CosyVoice (阿里云 DashScope)</div>
-        <div class="engine-desc">阿里云语音合成，需要 API Key</div>
+        <div class="engine-name">${wl('CosyVoice (阿里云 DashScope)', 'CosyVoice (DashScope)')}</div>
+        <div class="engine-desc">${wl('阿里云语音合成，需要 API Key', 'DashScope TTS, requires API key')}</div>
       </div>
       <div class="engine-card ${stepData.ttsEngine === 'edge' ? 'selected' : ''}" onclick="selectEngine('edge', this)">
         <div class="engine-name">Edge TTS</div>
-        <div class="engine-desc">免费、无需配置，作为兜��方案</div>
-        <span class="engine-badge free">免费</span>
+        <div class="engine-desc">${wl('免费、无需配置，作为兜底方案', 'Free, no setup, fallback option')}</div>
+        <span class="engine-badge free">${wl('免费', 'Free')}</span>
       </div>
     </div>
 
-    <div id="env-python" class="env-check">检测 TTS 依赖中...</div>
+    <div id="env-python" class="env-check">${wl('检测 TTS 依赖中...', 'Checking TTS dependencies...')}</div>
     
     <!-- 快速试听区域 — 选完引擎立即显示 -->
     <div id="quick-listen-area" class="hidden"></div>
     
     <!-- TTS 依赖检测结果 -->
     <div id="tts-check-results" class="hidden" style="margin-top: 12px;">
-      <h3 style="font-size: 12px; margin-bottom: 8px;">🔍 TTS 引擎检测结果</h3>
+      <h3 style="font-size: 12px; margin-bottom: 8px;">${wl('🔍 TTS 引擎检测结果', '🔍 TTS checks')}</h3>
       
       <div class="check-item" id="check-minimax">
         <span class="check-icon">⏳</span>
         <span class="check-name">MiniMax Speech</span>
-        <span class="check-status">检测中...</span>
+        <span class="check-status">${wl('检测中...', 'Checking...')}</span>
       </div>
       
       <div class="check-item" id="check-dashscope">
         <span class="check-icon">⏳</span>
         <span class="check-name">DashScope CosyVoice</span>
-        <span class="check-status">检测中...</span>
+        <span class="check-status">${wl('检测中...', 'Checking...')}</span>
       </div>
       
       <div class="check-item" id="check-python">
         <span class="check-icon">⏳</span>
-        <span class="check-name">Python 环境</span>
-        <span class="check-status">检测中...</span>
+        <span class="check-name">${wl('Python 环境', 'Python environment')}</span>
+        <span class="check-status">${wl('检测中...', 'Checking...')}</span>
       </div>
       
       <div class="check-item" id="check-edgetts">
         <span class="check-icon">⏳</span>
-        <span class="check-name">Edge TTS 包</span>
-        <span class="check-status">检测中...</span>
+        <span class="check-name">${wl('Edge TTS 包', 'Edge TTS package')}</span>
+        <span class="check-status">${wl('检测中...', 'Checking...')}</span>
       </div>
       
       <div class="check-item" id="check-dashscope-pkg">
         <span class="check-icon">⏳</span>
-        <span class="check-name">DashScope 包</span>
-        <span class="check-status">检测中...</span>
+        <span class="check-name">${wl('DashScope 包', 'DashScope package')}</span>
+        <span class="check-status">${wl('检测中...', 'Checking...')}</span>
       </div>
       
       <div class="check-item" id="check-tempdir">
         <span class="check-icon">⏳</span>
-        <span class="check-name">临时目录</span>
-        <span class="check-status">检测中...</span>
+        <span class="check-name">${wl('临时目录', 'Temp directory')}</span>
+        <span class="check-status">${wl('检测中...', 'Checking...')}</span>
       </div>
       
       <div class="recommendation" id="tts-recommendation" style="margin-top: 12px; padding: 10px; background: #e8f5e9; border: 2px solid var(--grass-light); border-radius: 4px;">
-        <strong>💡 推荐引擎:</strong> <span id="recommended-engine">检测中...</span>
+        <strong>${wl('💡 推荐引擎:', '💡 Recommended engine:')}</strong> <span id="recommended-engine">${wl('检测中...', 'Checking...')}</span>
       </div>
     </div>
 
@@ -1967,75 +2168,75 @@ async function renderStep3() {
       <div class="form-group">
         <label>API Key</label>
         <div class="input-wrap">
-          <input type="password" class="form-input" id="tts-apikey" placeholder="请输入 API Key" value="${stepData.ttsApiKey || ''}">
+          <input type="password" class="form-input" id="tts-apikey" placeholder="${wl('请输入 API Key', 'Enter API key')}" value="${stepData.ttsApiKey || ''}">
           <button class="eye-btn" onclick="toggleApiKeyVisibility()" id="eye-btn" type="button">👁</button>
         </div>
       </div>
     </div>
 
     <div id="voice-clone-area" class="${stepData.ttsEngine === 'edge' ? 'hidden' : ''}" style="margin-top: 14px; border-top: 2px dashed var(--parchment-dark); padding-top: 12px;">
-      <h3 style="font-size: 12px; margin-bottom: 8px;">🎤 音色选择</h3>
+      <h3 style="font-size: 12px; margin-bottom: 8px;">${wl('🎤 音色选择', '🎤 Voice selection')}</h3>
       
       <!-- 当前音色显示 -->
       <div id="current-voice-display" class="note-box" style="background: #e8f5e9; border-color: var(--grass-light);">
-        <strong>当前音色:</strong> <span id="current-voice-name">female-tianmei (甜美女性)</span>
+        <strong>${wl('当前音色:', 'Current voice:')}</strong> <span id="current-voice-name">female-tianmei (${wl('甜美女性', 'Sweet female')})</span>
       </div>
 
       <!-- 预设音色选择 -->
       <div class="form-group">
-        <label>选择预设音色（免费，无需克隆）</label>
+        <label>${wl('选择预设音色（免费，无需克隆）', 'Select preset voice (free, no clone needed)')}</label>
         <select class="form-input" id="preset-voice-select" onchange="onPresetVoiceChange(this.value)">
-          <option value="female-tianmei">甜美女性音色</option>
-          <option value="female-shaonv">少女音色</option>
-          <option value="diadia_xuemei">嗲嗲学妹</option>
-          <option value="qiaopi_mengmei">俏皮萌妹</option>
-          <option value="tianxin_xiaoling">甜心小玲</option>
-          <option value="lovely_girl">萌萌女童</option>
+          <option value="female-tianmei">${wl('甜美女性音色', 'Sweet female')}</option>
+          <option value="female-shaonv">${wl('少女音色', 'Young female')}</option>
+          <option value="diadia_xuemei">${wl('嗲嗲学妹', 'Cute junior')}</option>
+          <option value="qiaopi_mengmei">${wl('俏皮萌妹', 'Playful girl')}</option>
+          <option value="tianxin_xiaoling">${wl('甜心小玲', 'Sweet Xiaoling')}</option>
+          <option value="lovely_girl">${wl('萌萌女童', 'Lovely girl')}</option>
           <option value="Sweet_Girl">Sweet Girl</option>
           <option value="Cute_Elf">Cute Elf</option>
-          <option value="custom">自定义 Voice ID...</option>
+          <option value="custom">${wl('自定义 Voice ID...', 'Custom Voice ID...')}</option>
         </select>
       </div>
 
       <!-- 自定义 Voice ID 输入框 -->
       <div class="form-group hidden" id="custom-voice-input-area">
-        <label>自定义 Voice ID</label>
-        <input type="text" class="form-input" id="custom-voice-id" placeholder="输入你的 voice_id (例如: my_voice_123)" oninput="onCustomVoiceIdInput()">
+        <label>${wl('自定义 Voice ID', 'Custom Voice ID')}</label>
+        <input type="text" class="form-input" id="custom-voice-id" placeholder="${wl('输入你的 voice_id (例如: my_voice_123)', 'Enter your voice_id (e.g. my_voice_123)')}" oninput="onCustomVoiceIdInput()">
         <div style="font-size: 11px; color: var(--text-medium); margin-top: 4px;">
-          💡 如果你在 MiniMax 控制台已经克隆了音色，可以在这里填入 voice_id
+          ${wl('💡 如果你在 MiniMax 控制台已经克隆了音色，可以在这里填入 voice_id', '💡 If you already cloned voice in MiniMax console, paste voice_id here')}
         </div>
       </div>
 
       <!-- 自定义克隆（可选） -->
       <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--parchment-dark);">
-        <h3 style="font-size: 11px; margin-bottom: 6px; color: var(--text-medium);">🎙️ 高级：克隆你的专属音色（可选）</h3>
-        <div class="note-box">💡 上传30秒以上的清晰录音，系统会自动克隆你的专属音色。</div>
+        <h3 style="font-size: 11px; margin-bottom: 6px; color: var(--text-medium);">${wl('🎙️ 高级：克隆你的专属音色（可选）', '🎙️ Advanced: clone your own voice (optional)')}</h3>
+        <div class="note-box">${wl('💡 上传30秒以上的清晰录音，系统会自动克隆你的专属音色。', '💡 Upload 30s+ clear audio to clone your own voice.')}</div>
         <div class="form-group">
-          <label>上传录音文件</label>
+          <label>${wl('上传录音文件', 'Upload voice sample')}</label>
           <div class="upload-area" id="voice-upload-area"
             onclick="document.getElementById('voice-file-input').click()"
             ondragover="event.preventDefault(); this.classList.add('dragover')"
             ondragleave="this.classList.remove('dragover')"
             ondrop="handleVoiceDrop(event)">
             <div class="upload-icon">🎙️</div>
-            <div class="upload-text" id="upload-text">点击选择或拖拽音频文件</div>
-            <div class="upload-hint">支持 MP3、WAV、M4A，建议30秒以上</div>
+            <div class="upload-text" id="upload-text">${wl('点击选择或拖拽音频文件', 'Click or drag audio file')}</div>
+            <div class="upload-hint">${wl('支持 MP3、WAV、M4A，建议30秒以上', 'Supports MP3/WAV/M4A, 30s+ recommended')}</div>
           </div>
           <input type="file" id="voice-file-input" accept="audio/*" style="display:none" onchange="handleVoiceFile(this)">
         </div>
         <div class="form-group">
-          <label>音色名称</label>
-          <input type="text" class="form-input" id="voice-clone-name" placeholder="例如：我的声音">
+          <label>${wl('音色名称', 'Voice name')}</label>
+          <input type="text" class="form-input" id="voice-clone-name" placeholder="${wl('例如：我的声音', 'e.g. My Voice')}">
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary btn-small" onclick="startVoiceClone()" id="btn-clone">开始克隆</button>
+          <button class="btn btn-primary btn-small" onclick="startVoiceClone()" id="btn-clone">${wl('开始克隆', 'Start clone')}</button>
         </div>
         <div id="clone-status"></div>
       </div>
     </div>
 
     <div class="btn-row" style="margin-top: 12px;">
-      <button class="btn btn-test" onclick="testTTS()">试听一下</button>
+      <button class="btn btn-test" onclick="testTTS()">${wl('试听一下', 'Try voice')}</button>
     </div>
   `);
 
@@ -2061,18 +2262,21 @@ async function renderStep3() {
           select.value = savedVoiceId;
           onPresetVoiceChange(savedVoiceId);
         } else {
-          // 自定义音色 - 选中"自定义"选项并填入 voice_id
+          // Custom voice: choose custom option and restore voice_id
           select.value = 'custom';
           const customInput = document.getElementById('custom-voice-id');
           const customInputArea = document.getElementById('custom-voice-input-area');
           if (customInput && customInputArea) {
             customInput.value = savedVoiceId;
             customInputArea.classList.remove('hidden');
-            document.getElementById('current-voice-name').textContent = `${savedVoiceId} (自定义)`;
+            document.getElementById('current-voice-name').textContent = `${savedVoiceId} ${wl('(自定义)', '(Custom)')}`;
           }
-          // 如果是别人的克隆音色，提示切换
+          // If it's another user's cloned voice, suggest switching
           if (savedVoiceId.includes('xiaotuantuan') || savedVoiceId.includes('tuantuan')) {
-            await addBubble('检测到你使用的是别人的克隆音色，可能没有权限访问。建议切换到预设音色或上传自己的录音克隆~ (^_^)');
+            await addBubble(wl(
+              '检测到你使用的是别人的克隆音色，可能没有权限访问。建议切换到预设音色或上传自己的录音克隆~ (^_^)',
+              'Detected a cloned voice that may belong to another account. You may not have permission. Switch to a preset voice or clone your own sample.'
+            ));
           }
         }
       }
@@ -2116,10 +2320,10 @@ function updateQuickListenBtn(engine) {
   const needsKey = engine !== 'edge';
   area.innerHTML = `
     <div style="margin-top:12px;padding:10px;background:#e8f0fe;border:2px solid #7c9fcf;border-radius:4px;">
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">🔊 快速试听</div>
-      <div style="font-size:11px;color:var(--text-medium);margin-bottom:8px;">${needsKey ? '填好 API Key 后点这里马上听效果' : '免费引擎，无需 API Key，直接试听'}</div>
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">${wl('🔊 快速试听', '🔊 Quick listen')}</div>
+      <div style="font-size:11px;color:var(--text-medium);margin-bottom:8px;">${needsKey ? wl('填好 API Key 后点这里马上听效果', 'Fill API key and listen immediately') : wl('免费引擎，无需 API Key，直接试听', 'Free engine, no API key required')}</div>
       <div class="btn-row">
-        <button class="btn btn-test" onclick="quickListen()" id="btn-quick-listen">🔊 试听一下</button>
+        <button class="btn btn-test" onclick="quickListen()" id="btn-quick-listen">${wl('🔊 试听一下', '🔊 Try voice')}</button>
       </div>
       <div id="quick-listen-result" style="margin-top:8px;font-size:11px;"></div>
     </div>
@@ -2130,38 +2334,38 @@ async function quickListen() {
   const btn = document.getElementById('btn-quick-listen');
   const result = document.getElementById('quick-listen-result');
   if (!btn || !result) return;
-  btn.disabled = true; btn.textContent = '⏳ 生成中...';
+  btn.disabled = true; btn.textContent = wl('⏳ 生成中...', '⏳ Generating...');
   result.textContent = ''; result.style.color = 'var(--text-medium)';
   const apiKeyEl = document.getElementById('tts-apikey');
   const apiKey = apiKeyEl?.value.trim() || '';
   const engine = stepData.ttsEngine;
   if (engine !== 'edge' && !apiKey) {
-    result.textContent = '⚠️ 请先填写 API Key，再来试听哦~';
+    result.textContent = wl('⚠️ 请先填写 API Key，再来试听哦~', '⚠️ Fill API key first, then try.');
     result.style.color = '#f57f17';
-    btn.disabled = false; btn.textContent = '🔊 试听一下'; return;
+    btn.disabled = false; btn.textContent = wl('🔊 试听一下', '🔊 Try voice'); return;
   }
   try {
     const engineConfig = {
       engine: engine === 'minimax-hd' ? 'minimax' : (engine === 'cosyvoice' ? 'dashscope' : engine),
       model: engine === 'minimax-hd' ? 'speech-2.8-hd' : engine === 'minimax' ? 'speech-2.5-turbo-preview' : '',
       apiKey: apiKey,
-      text: '你好，我是你的蛋宠助手，已经准备好开始陪伴你了。'
+      text: wl('你好，我是你的蛋宠助手，已经准备好开始陪伴你了。', 'Hello, I am your egg assistant and I am ready to support you.')
     };
     const testResult = await wizardAPI.invoke('wizard-test-tts', engineConfig);
     if (testResult.success) {
-      result.textContent = '✅ 试听成功！听到声音了吗？';
+      result.textContent = wl('✅ 试听成功！听到声音了吗？', '✅ Playback succeeded. Can you hear it?');
       result.style.color = 'var(--green)';
-      btn.textContent = '🔊 再听一次';
+      btn.textContent = wl('🔊 再听一次', '🔊 Play again');
     } else {
-      const errMsg = friendlyError(testResult.error || '未知错误');
+      const errMsg = friendlyError(testResult.error || wl('未知错误', 'unknown error'));
       result.innerHTML = `❌ ${errMsg}`;
       if (testResult.fix) result.innerHTML += '<br>' + cmdBlock(testResult.fix);
       result.style.color = 'var(--red)';
-      btn.textContent = '🔊 试听一下';
+      btn.textContent = wl('🔊 试听一下', '🔊 Try voice');
     }
   } catch (err) {
     result.textContent = '❌ ' + friendlyError(err.message);
-    result.style.color = 'var(--red)'; btn.textContent = '🔊 试听一下';
+    result.style.color = 'var(--red)'; btn.textContent = wl('🔊 试听一下', '🔊 Try voice');
   }
   btn.disabled = false;
 }
@@ -2185,18 +2389,24 @@ async function checkPythonEnv() {
     if (result.available) {
       if (result.edgeTTS) {
         el.className = 'env-check ok';
-        el.textContent = `✓ Python ${result.version} + edge-tts (Edge TTS / CosyVoice 可用)`;
+        el.textContent = wl(
+          `✓ Python ${result.version} + edge-tts (Edge TTS / CosyVoice 可用)`,
+          `✓ Python ${result.version} + edge-tts (Edge TTS / CosyVoice available)`
+        );
       } else {
         el.className = 'env-check ok';
-        el.textContent = `✓ Python ${result.version} (CosyVoice 可用 | Edge TTS 需安装: pip install edge-tts)`;
+        el.textContent = wl(
+          `✓ Python ${result.version} (CosyVoice 可用 | Edge TTS 需安装: pip install edge-tts)`,
+          `✓ Python ${result.version} (CosyVoice available | install Edge TTS: pip install edge-tts)`
+        );
       }
     } else {
       el.className = 'env-check err';
-      el.textContent = '✗ 未检测到 Python — Edge TTS 和 CosyVoice 不可用';
+      el.textContent = wl('✗ 未检测到 Python — Edge TTS 和 CosyVoice 不可用', '✗ Python not found — Edge TTS and CosyVoice unavailable');
     }
   } catch {
     el.className = 'env-check err';
-    el.textContent = '✗ Python 环境检测失败';
+    el.textContent = wl('✗ Python 环境检测失败', '✗ Python environment check failed');
   }
   
   // 🔍 启动完整 TTS 依赖检测
@@ -2228,18 +2438,18 @@ async function checkTTSDependencies() {
     // 更新推荐引擎
     const recommendEl = document.getElementById('recommended-engine');
     const engineNames = {
-      'minimax': 'MiniMax Speech (最佳音质+情感)',
-      'dashscope': 'DashScope CosyVoice (音色克隆)',
-      'edge': 'Edge TTS (免费但音质一般)',
-      'none': '⚠️ 无可用TTS引擎'
+      'minimax': wl('MiniMax Speech (最佳音质+情感)', 'MiniMax Speech (best quality + emotion)'),
+      'dashscope': wl('DashScope CosyVoice (音色克隆)', 'DashScope CosyVoice (voice clone)'),
+      'edge': wl('Edge TTS (免费但音质一般)', 'Edge TTS (free, basic quality)'),
+      'none': wl('⚠️ 无可用TTS引擎', '⚠️ No available TTS engine')
     };
     recommendEl.textContent = engineNames[results.recommended] || results.recommended;
     recommendEl.parentElement.style.background = results.recommended === 'none' ? '#ffebee' : '#e8f5e9';
     recommendEl.parentElement.style.borderColor = results.recommended === 'none' ? '#ef5350' : 'var(--grass-light)';
     
   } catch (err) {
-    console.error('TTS检测失败:', err);
-    document.getElementById('tts-recommendation').innerHTML = `<strong>❌ 检测失败:</strong> ${err.message}`;
+    console.error('TTS check failed:', err);
+    document.getElementById('tts-recommendation').innerHTML = `<strong>${wl('❌ 检测失败:', '❌ Check failed:')}</strong> ${err.message}`;
   }
 }
 
@@ -2253,12 +2463,12 @@ function updateCheckItem(id, result) {
   
   if (result.available) {
     icon.textContent = '✅';
-    status.textContent = result.version ? `v${result.version}` : '可用';
+    status.textContent = result.version ? `v${result.version}` : wl('可用', 'Available');
     status.style.color = 'var(--green)';
     item.style.background = '#e8f5e9';
   } else {
     icon.textContent = '❌';
-    const errMsg = friendlyError(result.error || '不可用');
+    const errMsg = friendlyError(result.error || wl('不可用', 'Unavailable'));
     status.textContent = errMsg;
     status.style.color = 'var(--red)';
     item.style.background = '#ffebee';
@@ -2274,7 +2484,7 @@ function updateCheckItem(id, result) {
       
       const fixBtn = document.createElement('button');
       fixBtn.className = 'fix-btn';
-      fixBtn.textContent = result.fix.startsWith('http') ? '前往下载' : '一键安装';
+      fixBtn.textContent = result.fix.startsWith('http') ? wl('前往下载', 'Download') : wl('一键安装', 'Install');
       fixBtn.onclick = () => handleTTSFix(id, result);
       item.appendChild(fixBtn);
     }
@@ -2287,7 +2497,7 @@ async function handleTTSFix(checkId, result) {
   const fixBtn = item.querySelector('.fix-btn');
   
   if (fixBtn) {
-    fixBtn.textContent = '修复中...';
+    fixBtn.textContent = wl('修复中...', 'Fixing...');
     fixBtn.disabled = true;
   }
   
@@ -2298,10 +2508,10 @@ async function handleTTSFix(checkId, result) {
       const installResult = await wizardAPI.invoke('install-edge-tts', pythonCmd);
       
       if (installResult.success) {
-        await addBubble('✅ edge-tts 安装成功！');
+        await addBubble(wl('✅ edge-tts 安装成功！', '✅ edge-tts installed successfully.'));
         checkTTSDependencies(); // 重新检测
       } else {
-        await addBubble(`❌ 安装失败: ${installResult.error}\n\n请手动运行:\n${result.fix}`);
+        await addBubble(wl(`❌ 安装失败: ${installResult.error}\n\n请手动运行:\n${result.fix}`, `❌ Install failed: ${installResult.error}\n\nRun manually:\n${result.fix}`));
       }
     } else if (checkId === 'check-dashscope-pkg') {
       // 安装 dashscope
@@ -2309,21 +2519,21 @@ async function handleTTSFix(checkId, result) {
       const installResult = await wizardAPI.invoke('install-dashscope', pythonCmd);
       
       if (installResult.success) {
-        await addBubble('✅ dashscope 安装成功！');
+        await addBubble(wl('✅ dashscope 安装成功！', '✅ dashscope installed successfully.'));
         checkTTSDependencies();
       } else {
-        await addBubble(`❌ 安装失败: ${installResult.error}\n\n请手动运行:\n${result.fix}`);
+        await addBubble(wl(`❌ 安装失败: ${installResult.error}\n\n请手动运行:\n${result.fix}`, `❌ Install failed: ${installResult.error}\n\nRun manually:\n${result.fix}`));
       }
     } else if (checkId === 'check-python') {
       // Python 未安装，打开下载页面
-      await addBubble('正在打开 Python 官网下载页面...');
+      await addBubble(wl('正在打开 Python 官网下载页面...', 'Opening the Python download page...'));
       wizardAPI.invoke('open-external', result.fix);
     }
   } catch (err) {
-    await addBubble(`修复失败: ${err.message}`);
+    await addBubble(wl(`修复失败: ${err.message}`, `Fix failed: ${err.message}`));
   } finally {
     if (fixBtn) {
-      fixBtn.textContent = '一键修复';
+      fixBtn.textContent = wl('一键修复', 'Fix now');
       fixBtn.disabled = false;
     }
   }
@@ -2341,18 +2551,18 @@ function onPresetVoiceChange(voiceId) {
     // 显示自定义输入框
     customInputArea.classList.remove('hidden');
     currentVoiceId = customInput.value.trim() || 'female-tianmei';
-    document.getElementById('current-voice-name').textContent = `${currentVoiceId} (自定义)`;
+    document.getElementById('current-voice-name').textContent = `${currentVoiceId} ${wl('(自定义)', '(Custom)')}`;
   } else {
     // 隐藏自定义输入框
     customInputArea.classList.add('hidden');
     currentVoiceId = voiceId;
     const voiceNames = {
-      'female-tianmei': '甜美女性音色',
-      'female-shaonv': '少女音色',
-      'diadia_xuemei': '嗲嗲学妹',
-      'qiaopi_mengmei': '俏皮萌妹',
-      'tianxin_xiaoling': '甜心小玲',
-      'lovely_girl': '萌萌女童',
+      'female-tianmei': wl('甜美女性音色', 'Sweet female'),
+      'female-shaonv': wl('少女音色', 'Young female'),
+      'diadia_xuemei': wl('嗲嗲学妹', 'Cute junior'),
+      'qiaopi_mengmei': wl('俏皮萌妹', 'Playful girl'),
+      'tianxin_xiaoling': wl('甜心小玲', 'Sweet Xiaoling'),
+      'lovely_girl': wl('萌萌女童', 'Lovely girl'),
       'Sweet_Girl': 'Sweet Girl',
       'Cute_Elf': 'Cute Elf'
     };
@@ -2370,7 +2580,7 @@ function onCustomVoiceIdInput() {
   const voiceId = customInput.value.trim();
   if (voiceId) {
     currentVoiceId = voiceId;
-    document.getElementById('current-voice-name').textContent = `${voiceId} (自定义)`;
+    document.getElementById('current-voice-name').textContent = `${voiceId} ${wl('(自定义)', '(Custom)')}`;
     wizardAPI.invoke('wizard-save-voice-id', { voiceId }).catch(() => {});
   }
 }
@@ -2396,26 +2606,26 @@ function handleVoiceDrop(event) {
 
 async function startVoiceClone() {
   if (!selectedVoiceFile) {
-    await addBubble('请先选择一个音频文件哦~ (>_<)');
+    await addBubble(wl('请先选择一个音频文件哦~ (>_<)', 'Please select an audio file first.'));
     return;
   }
   const maxSizeMB = 50;
   if (selectedVoiceFile.size > maxSizeMB * 1024 * 1024) {
-    await addBubble(`文件太大啦！最大支持 ${maxSizeMB}MB，你的文件是 ${(selectedVoiceFile.size / 1024 / 1024).toFixed(1)}MB (>_<)`);
+    await addBubble(wl(`文件太大啦！最大支持 ${maxSizeMB}MB，你的文件是 ${(selectedVoiceFile.size / 1024 / 1024).toFixed(1)}MB (>_<)`, `File too large. Max ${maxSizeMB}MB, yours is ${(selectedVoiceFile.size / 1024 / 1024).toFixed(1)}MB.`));
     return;
   }
   const apiKeyEl = document.getElementById('tts-apikey');
   const apiKey = apiKeyEl ? apiKeyEl.value.trim() : '';
   if (!apiKey) {
-    await addBubble('克隆音色需要 API Key 哦~ 请先填入 API Key (>_<)');
+    await addBubble(wl('克隆音色需要 API Key 哦~ 请先填入 API Key (>_<)', 'Voice clone requires an API key. Please fill it first.'));
     return;
   }
-  const cloneName = document.getElementById('voice-clone-name').value.trim() || '我的声音';
+  const cloneName = document.getElementById('voice-clone-name').value.trim() || wl('我的声音', 'My Voice');
   const statusEl = document.getElementById('clone-status');
-  statusEl.innerHTML = '<div class="status-item"><div class="status-icon loading"></div><span>正在上传并克隆音色... 请耐心等待（约30秒）</span></div>';
+  statusEl.innerHTML = `<div class="status-item"><div class="status-icon loading"></div><span>${wl('正在上传并克隆音色... 请耐心等待（约30秒）', 'Uploading and cloning voice... please wait (~30s)')}</span></div>`;
   document.getElementById('btn-clone').disabled = true;
 
-  await addBubble('开始克隆音色啦！上传中... 请耐心等待~ (o_O)');
+  await addBubble(wl('开始克隆音色啦！上传中... 请耐心等待~ (o_O)', 'Voice clone started. Uploading... please wait.'));
 
   try {
     const arrayBuffer = await selectedVoiceFile.arrayBuffer();
@@ -2430,27 +2640,27 @@ async function startVoiceClone() {
     });
 
     if (result.success) {
-      statusEl.innerHTML = '<div class="status-item"><div class="status-icon success">✓</div><span>音色克隆成功！ID: ' + escapeHtml(result.voiceId) + '</span></div>';
+      statusEl.innerHTML = '<div class="status-item"><div class="status-icon success">✓</div><span>' + wl('音色克隆成功！ID: ', 'Voice cloned! ID: ') + escapeHtml(result.voiceId) + '</span></div>';
       stepData.clonedVoiceId = result.voiceId;
       currentVoiceId = result.voiceId;
       // 更新当前音色显示
-      document.getElementById('current-voice-name').textContent = `${result.voiceId} (自定义克隆)`;
-      await addBubble('音色克隆成功啦！(^_^) 试听一下新音色...');
+      document.getElementById('current-voice-name').textContent = `${result.voiceId} ${wl('(自定义克隆)', '(Cloned)')}`;
+      await addBubble(wl('音色克隆成功啦！(^_^) 试听一下新音色...', 'Voice clone succeeded. Try the new voice.'));
       // Auto-test with new voice
       try { await testTTS(); } catch {}
     } else {
       statusEl.innerHTML = '<div class="status-item"><div class="status-icon fail">✗</div><span>' + escapeHtml(result.error) + '</span></div>';
-      await addBubble('克隆失败了 (T_T): ' + result.error);
+      await addBubble(wl('克隆失败了 (T_T): ', 'Voice clone failed: ') + result.error);
     }
   } catch (err) {
     statusEl.innerHTML = '<div class="status-item"><div class="status-icon fail">✗</div><span>' + escapeHtml(err.message) + '</span></div>';
-    await addBubble('出错了 (>_<): ' + err.message);
+    await addBubble(wl('出错了 (>_<): ', 'Error: ') + err.message);
   }
   document.getElementById('btn-clone').disabled = false;
 }
 
 async function skipWizard() {
-  if (confirm('跳过孵化引导将使用默认配置，确定吗？')) {
+  if (confirm(tw('skipConfirm'))) {
     await wizardAPI.invoke('wizard-complete');
     window.close();
   }
@@ -2461,11 +2671,11 @@ async function testTTS() {
   if (apiKeyEl) stepData.ttsApiKey = apiKeyEl.value.trim();
 
   if (stepData.ttsEngine !== 'edge' && !stepData.ttsApiKey) {
-    await addBubble('请先输入 API Key 才能试听哦~ (>_<)');
+    await addBubble(wl('请先输入 API Key 才能试听哦~ (>_<)', 'Please enter API key before testing voice.'));
     return;
   }
 
-  await addBubble('正在生成试听语音... 请稍等~ ♪(^_^)♪');
+  await addBubble(wl('正在生成试听语音... 请稍等~ ♪(^_^)♪', 'Generating test voice... please wait.'));
 
   try {
     const result = await wizardAPI.invoke('wizard-test-tts', {
@@ -2474,24 +2684,23 @@ async function testTTS() {
       voiceId: currentVoiceId  // 传入当前选中的 voice_id
     });
     if (result.success) {
-      await addBubble('听到了吗？效果怎么样~ (o^_^o)');
+      await addBubble(wl('听到了吗？效果怎么样~ (o^_^o)', 'Did you hear it? How does it sound?'));
     } else {
-      await addBubble('呜...试听失败了 (T_T) 错误: ' + (result.error || '未知错误'));
+      await addBubble(wl('呜...试听失败了 (T_T) 错误: ', 'Test playback failed: ') + (result.error || wl('未知错误', 'unknown error')));
     }
   } catch (err) {
-    await addBubble('呜...出错了: ' + err.message + ' (>_<)');
+    await addBubble(wl('呜...出错了: ', 'Error: ') + err.message);
   }
 }
 
 // ─── Step 4: 蛋宠注入核心 ───────────────────────
 async function renderStep4() {
-  // 🌀 第一阶段：神秘台词
-  await addBubble('现在是最关键的一步——(〃>_<;〃)');
-  await addBubble('我要为你的蛋宠注入核心了！');
-  await addBubble('一颗蛋，刚从能量场里诞生...');
-  await addBubble('它现在还什么都不知道，没有名字，没有记忆，也没有成长方向');
-  await addBubble('但现在，你来了 ✨');
-  await addBubble('告诉我它的名字，告诉我你是谁——\n让我把这一切刻进它的孵化核心 (｡•̀ᴗ-)✧');
+  await addBubble(wl('现在是最关键的一步——(〃>_<;〃)', 'This is the most important step.'));
+  await addBubble(wl('我要为你的蛋宠注入核心了！', 'I will infuse the egg core now.'));
+  await addBubble(wl('一颗蛋，刚从能量场里诞生...', 'An egg has just emerged from the energy field...'));
+  await addBubble(wl('它现在还什么都不知道，没有名字，没有记忆，也没有成长方向', 'It has no name, no memory, and no growth direction yet.'));
+  await addBubble(wl('但现在，你来了 ✨', 'Now you are here ✨'));
+  await addBubble(wl('告诉我它的名字，告诉我你是谁——\n让我把这一切刻进它的孵化核心 (｡•̀ᴗ-)✧', 'Tell me its name and how it should call you.\nI will write that into the hatch core.'));
 
   // Auto-detect dir
   let detectedDir = '';
@@ -2502,7 +2711,7 @@ async function renderStep4() {
 
   addCard(`
     <h3 style="text-align:center;letter-spacing:3px;color:var(--wood-dark);font-size:14px;">
-      ✦ 蛋宠核心定制 ✦
+      ${wl('✦ 蛋宠核心定制 ✦', '✦ Egg Core Customization ✦')}
     </h3>
 
     <!-- 蛋宠动画舞台 -->
@@ -2514,52 +2723,52 @@ async function renderStep4() {
       <!-- 孵化能量环 -->
       <div id="soul-ring" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80px;height:80px;border-radius:50%;border:2px solid transparent;transition:all 1s ease;pointer-events:none;"></div>
       <!-- 状态文字 -->
-      <div id="soul-status-text" style="color:#888;font-size:11px;margin-top:8px;font-family:monospace;letter-spacing:1px;">蛋壳核心 · 等待注入</div>
+      <div id="soul-status-text" style="color:#888;font-size:11px;margin-top:8px;font-family:monospace;letter-spacing:1px;">${wl('蛋壳核心 · 等待注入', 'Egg core · waiting')}</div>
     </div>
 
     <!-- 写入进度列表 -->
     <div id="soul-progress-list" class="hidden" style="margin:10px 0;padding:8px;background:rgba(0,0,0,0.05);border-radius:4px;border:1px solid var(--parchment-dark);">
-      <div style="font-size:11px;font-weight:600;color:var(--text-medium);margin-bottom:6px;font-family:monospace;">▼ 孵化写入日志</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text-medium);margin-bottom:6px;font-family:monospace;">${wl('▼ 孵化写入日志', '▼ Hatch write log')}</div>
       <div id="soul-file-list" style="font-family:monospace;font-size:10px;line-height:1.8;"></div>
     </div>
 
     <!-- 配置表单 -->
     <div id="soul-form" style="margin-top:14px;border-top:2px dashed var(--parchment-dark);padding-top:12px;">
       <div class="form-group">
-        <label>🥚 蛋宠的名字（它的核心标识）</label>
-        <input type="text" class="form-input" id="pet-name" placeholder="例如：小K、蛋宝、Eggy、阿蛋" value="">
+        <label>${wl('🥚 蛋宠的名字（它的核心标识）', '🥚 Pet name (core identity)')}</label>
+        <input type="text" class="form-input" id="pet-name" placeholder="${wl('例如：小K、蛋宝、Eggy、阿蛋', 'e.g. Eggy, Bolt, Nova')}" value="">
       </div>
       <div class="form-group">
-        <label>👤 你的称呼（蛋宠怎么叫你）</label>
-        <input type="text" class="form-input" id="user-name" placeholder="例如：KK、喂养者、队长" value="">
+        <label>${wl('👤 你的称呼（蛋宠怎么叫你）', '👤 Your name (how pet calls you)')}</label>
+        <input type="text" class="form-input" id="user-name" placeholder="${wl('例如：KK、喂养者、队长', 'e.g. Kai, Keeper, Captain')}" value="">
       </div>
       <div class="form-group">
-        <label>🎭 性格风格</label>
+        <label>${wl('🎭 性格风格', '🎭 Personality')}</label>
         <select class="form-input" id="personality-preset" onchange="onPersonalityPresetChange(this.value)">
-          <option value="sweet">🌸 甜妹风格 — 温柔可爱，偶尔撒娇</option>
-          <option value="professional">💼 专业助手 — 高效严谨，条理清晰</option>
-          <option value="funny">😂 幽默搞怪 — 爱开玩笑，轻松活泼</option>
-          <option value="cool">😎 酷帅风格 — 简洁利落，不废话</option>
-          <option value="custom">✍️ 自定义...</option>
+          <option value="sweet">${wl('🌸 甜妹风格 — 温柔可爱，偶尔撒娇', '🌸 Sweet style — warm and cute')}</option>
+          <option value="professional">${wl('💼 专业助手 — 高效严谨，条理清晰', '💼 Professional — efficient and clear')}</option>
+          <option value="funny">${wl('😂 幽默搞怪 — 爱开玩笑，轻松活泼', '😂 Funny — playful and lively')}</option>
+          <option value="cool">${wl('😎 酷帅风格 — 简洁利落，不废话', '😎 Cool — concise and direct')}</option>
+          <option value="custom">${wl('✍️ 自定义...', '✍️ Custom...')}</option>
         </select>
       </div>
       <div class="form-group hidden" id="custom-personality-area">
-        <label>自定义成长风格描述</label>
-        <textarea class="form-input" id="custom-personality" rows="3" style="resize:vertical;" placeholder="描述你想要的 Agent 性格和说话方式..."></textarea>
+        <label>${wl('自定义成长风格描述', 'Custom personality prompt')}</label>
+        <textarea class="form-input" id="custom-personality" rows="3" style="resize:vertical;" placeholder="${wl('描述你想要的 Agent 性格和说话方式...', 'Describe tone and speaking style...')}"></textarea>
       </div>
 
       <div style="font-size:11px;color:var(--text-medium);margin-bottom:10px;padding:8px;background:#fff8e1;border:1px solid #ffe082;border-radius:3px;">
-        💡 推荐使用 <strong>Claude Sonnet 4+</strong> 旗舰模型，语音播报遵循度最佳
+        ${wl('💡 推荐使用 <strong>Claude Sonnet 4+</strong> 旗舰模型，语音播报遵循度最佳', '💡 Recommended: <strong>Claude Sonnet 4+</strong> for best voice-follow quality')}
       </div>
 
       <input type="hidden" id="workspace-dir" value="${escapeHtml(detectedDir)}">
 
       <div class="btn-row">
         <button class="btn btn-primary" onclick="infuseSoul()" id="btn-infuse" style="font-size:13px;padding:8px 20px;">
-          🌀 注入核心
+          ${wl('🌀 注入核心', '🌀 Infuse core')}
         </button>
         <button class="btn btn-test" onclick="testAgentVoice()" id="btn-test-voice" style="display:none;">
-          🔊 测试播报
+          ${wl('🔊 测试播报', '🔊 Test voice')}
         </button>
       </div>
     </div>
@@ -2642,7 +2851,7 @@ function setSoulLobsterPhase(phase) {
     case 'dormant':
       lobster.style.filter = 'grayscale(100%) brightness(0.5)';
       lobster.style.transform = 'scale(1)';
-      statusText.textContent = '蛋壳核心 · 等待注入';
+      statusText.textContent = wl('蛋壳核心 · 等待注入', 'Egg core · waiting');
       statusText.style.color = '#666';
       break;
     case 'awakening':
@@ -2652,7 +2861,7 @@ function setSoulLobsterPhase(phase) {
       ring.style.border = '2px solid rgba(138,43,226,0.6)';
       ring.style.boxShadow = '0 0 15px rgba(138,43,226,0.4)';
       ring.style.animation = 'ring-expand 1.5s ease-out infinite';
-      statusText.textContent = '⚡ 能量涌入中...';
+      statusText.textContent = wl('⚡ 能量涌入中...', '⚡ Energy infusing...');
       statusText.style.color = '#b39ddb';
       break;
     case 'infusing':
@@ -2660,7 +2869,7 @@ function setSoulLobsterPhase(phase) {
       lobster.style.animation = 'soul-pulse 0.5s ease-in-out infinite alternate';
       ring.style.border = '2px solid rgba(255,140,0,0.8)';
       ring.style.boxShadow = '0 0 25px rgba(255,140,0,0.6)';
-      statusText.textContent = '🌀 核心正在写入...';
+      statusText.textContent = wl('🌀 核心正在写入...', '🌀 Writing core...');
       statusText.style.color = '#ffb74d';
       spawnParticles();
       break;
@@ -2670,7 +2879,7 @@ function setSoulLobsterPhase(phase) {
       lobster.style.animation = 'soul-born 0.6s cubic-bezier(0.36,0.07,0.19,0.97) forwards';
       ring.style.border = '2px solid rgba(255,100,50,0.9)';
       ring.style.boxShadow = '0 0 40px rgba(255,100,50,0.8), 0 0 80px rgba(255,100,50,0.3)';
-      statusText.textContent = '✨ 蛋宠已觉醒！';
+      statusText.textContent = wl('✨ 蛋宠已觉醒！', '✨ Pet awakened!');
       statusText.style.color = '#ff7043';
       setTimeout(() => spawnBurstParticles(), 100);
       break;
@@ -2721,15 +2930,15 @@ function spawnBurstParticles() {
 
 // 主：注入核心
 async function infuseSoul() {
-  const petName = document.getElementById('pet-name').value.trim() || '蛋宝';
-  const userName = document.getElementById('user-name').value.trim() || '喂养者';
+  const petName = document.getElementById('pet-name').value.trim() || wl('蛋宝', 'Eggy');
+  const userName = document.getElementById('user-name').value.trim() || wl('喂养者', 'Keeper');
   const personalityPreset = document.getElementById('personality-preset').value;
   const customPersonality = document.getElementById('custom-personality')?.value?.trim() || '';
   const workspaceDir = document.getElementById('workspace-dir').value.trim() || '';
 
   const btn = document.getElementById('btn-infuse');
   btn.disabled = true;
-  btn.textContent = '🌀 注入中...';
+  btn.textContent = wl('🌀 注入中...', '🌀 Infusing...');
 
   // 清空旧的进度
   const fileList = document.getElementById('soul-file-list');
@@ -2738,8 +2947,8 @@ async function infuseSoul() {
   // 蛋宠开始觉醒
   setSoulLobsterPhase('awakening');
 
-  await addBubble(`好的！${petName} 这个名字真好听 (｡♥‿♥｡)`);
-  await addBubble('开始为它注入核心——请看好了！(ﾉ>ω<)ﾉ');
+  await addBubble(wl(`好的！${petName} 这个名字真好听 (｡♥‿♥｡)`, `Nice! ${petName} is a great name.`));
+  await addBubble(wl('开始为它注入核心——请看好了！(ﾉ>ω<)ﾉ', 'Starting core infusion now.'));
 
   // 延迟后进入灌注阶段
   await new Promise(r => setTimeout(r, 800));
@@ -2767,9 +2976,9 @@ async function infuseSoul() {
       await new Promise(r => setTimeout(r, 600));
 
       await addBubble(`✨✨✨`);
-      await addBubble(`${petName}...睁开了眼睛！(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧`);
-      await addBubble(`它现在知道自己叫什么、服务谁、如何说话`);
-      await addBubble(`——它开始呼吸了 🥚✨`);
+      await addBubble(wl(`${petName}...睁开了眼睛！(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧`, `${petName}... opened its eyes!`));
+      await addBubble(wl('它现在知道自己叫什么、服务谁、如何说话', 'It now knows its name, owner, and speaking style.'));
+      await addBubble(wl('——它开始呼吸了 🥚✨', '— It starts breathing now 🥚✨'));
 
       stepData._agentVoiceConfigured = true;
       stepData._agentSkipWarned = false;
@@ -2777,20 +2986,20 @@ async function infuseSoul() {
       // 显示测试按钮
       const testBtn = document.getElementById('btn-test-voice');
       if (testBtn) testBtn.style.display = 'inline-flex';
-      btn.textContent = '🌀 重新注入';
+      btn.textContent = wl('🌀 重新注入', '🌀 Re-infuse');
       btn.disabled = false;
 
     } else {
       setSoulLobsterPhase('dormant');
-      await addBubble(`核心注入失败了... (T_T) 错误: ${friendlyError(result.error)}`);
-      btn.textContent = '🌀 注入核心';
+      await addBubble(wl(`核心注入失败了... (T_T) 错误: ${friendlyError(result.error)}`, `Core infusion failed: ${friendlyError(result.error)}`));
+      btn.textContent = wl('🌀 注入核心', '🌀 Infuse core');
       btn.disabled = false;
     }
   } catch (err) {
     wizardAPI.off('soul-infuse-progress');
     setSoulLobsterPhase('dormant');
-    await addBubble(`出错了 (>_<): ${friendlyError(err.message)}`);
-    btn.textContent = '🌀 注入核心';
+    await addBubble(wl(`出错了 (>_<): ${friendlyError(err.message)}`, `Error: ${friendlyError(err.message)}`));
+    btn.textContent = wl('🌀 注入核心', '🌀 Infuse core');
     btn.disabled = false;
   }
 }
@@ -2805,28 +3014,28 @@ function onPersonalityPresetChange(value) {
 }
 
 async function testAgentVoice() {
-  await addBubble('测试蛋宠的播报链路... (o^_^o)');
+  await addBubble(wl('测试蛋宠的播报链路... (o^_^o)', 'Testing voice delivery pipeline...'));
   try {
     const result = await wizardAPI.invoke('wizard-test-agent-voice');
     if (result.success) {
-      await addBubble('播报测试成功！这颗蛋已经会发声了~ ♪(^_^)♪');
+      await addBubble(wl('播报测试成功！这颗蛋已经会发声了~ ♪(^_^)♪', 'Voice delivery succeeded. The egg can speak now.'));
     } else {
-      await addBubble('播报测试失败了... (T_T) 请确保蛋宠主程序正在运行~');
+      await addBubble(wl('播报测试失败了... (T_T) 请确保蛋宠主程序正在运行~', 'Voice delivery failed. Make sure the pet app is running.'));
     }
   } catch (err) {
-    await addBubble('测试出错: ' + err.message + ' (>_<)');
+    await addBubble(wl('测试出错: ', 'Test error: ') + err.message);
   }
 }
 // ─── Step 5: Display Settings ───────────────────────
 async function renderStep5() {
-  await addBubble('快要完成了，最后给蛋宠整理一下外观和停靠方式吧~ (^_^)');
+  await addBubble(wl('快要完成了，最后给蛋宠整理一下外观和停靠方式吧~ (^_^)', 'Almost done. Let us finish display settings.'));
 
   addCard(`
-    <h3>蛋宠外观与停靠</h3>
+    <h3>${wl('蛋宠外观与停靠', 'Display & Dock')}</h3>
     <div class="toggle-row">
       <div>
-        <div class="toggle-label">桌面歌词</div>
-        <div class="toggle-sublabel">在蛋宠上方显示消息字幕</div>
+        <div class="toggle-label">${wl('桌面歌词', 'Desktop captions')}</div>
+        <div class="toggle-sublabel">${wl('在蛋宠上方显示消息字幕', 'Show message captions above the pet')}</div>
       </div>
       <label class="switch">
         <input type="checkbox" id="toggle-lyrics" ${stepData.lyricsEnabled ? 'checked' : ''}>
@@ -2835,8 +3044,8 @@ async function renderStep5() {
     </div>
     <div class="toggle-row">
       <div>
-        <div class="toggle-label">球体置顶</div>
-        <div class="toggle-sublabel">蛋宠始终显示在最上层</div>
+        <div class="toggle-label">${wl('球体置顶', 'Always on top')}</div>
+        <div class="toggle-sublabel">${wl('蛋宠始终显示在最上层', 'Keep pet above other windows')}</div>
       </div>
       <label class="switch">
         <input type="checkbox" id="toggle-ontop" ${stepData.alwaysOnTop ? 'checked' : ''}>
@@ -2845,8 +3054,8 @@ async function renderStep5() {
     </div>
     <div class="toggle-row">
       <div>
-        <div class="toggle-label">开机自启动</div>
-        <div class="toggle-sublabel">Windows 启动时自动运行</div>
+        <div class="toggle-label">${wl('开机自启动', 'Auto launch')}</div>
+        <div class="toggle-sublabel">${wl('Windows 启动时自动运行', 'Run automatically when Windows starts')}</div>
       </div>
       <label class="switch">
         <input type="checkbox" id="toggle-autolaunch" ${stepData.autoLaunch ? 'checked' : ''}>
@@ -2858,50 +3067,50 @@ async function renderStep5() {
 
 // ─── Step 6: Full Test & Complete ───────────────────────
 async function renderStep6() {
-  await addBubble('最后一步，做一次完整孵化验收吧~ (*^_^*)');
-  await addBubble('我会依次测试心跳、大脑、声带、播报和显示能力，请稍等。');
+  await addBubble(wl('最后一步，做一次完整孵化验收吧~ (*^_^*)', 'Final step: run full hatch validation.'));
+  await addBubble(wl('我会依次测试心跳、大脑、声带、播报和显示能力，请稍等。', 'I will test heartbeat, brain, voice, delivery, and display in sequence.'));
 
   const card = addCard(`
-    <h3>完整孵化验收</h3>
+    <h3>${wl('完整孵化验收', 'Full Validation')}</h3>
     <div class="test-list" id="test-list">
       <div class="test-item" id="test-gw">
         <div class="status-icon loading" id="test-gw-icon"></div>
-        <span class="test-name">心跳连接</span>
-        <span class="test-msg" id="test-gw-msg">测试中...</span>
-        <button class="retry-btn hidden" id="test-gw-retry" onclick="retrySingleTest('gateway')">重试</button>
+        <span class="test-name">${wl('心跳连接', 'Heartbeat')}</span>
+        <span class="test-msg" id="test-gw-msg">${wl('测试中...', 'Testing...')}</span>
+        <button class="retry-btn hidden" id="test-gw-retry" onclick="retrySingleTest('gateway')">${wl('重试', 'Retry')}</button>
       </div>
       <div class="test-item" id="test-model">
         <div class="status-icon loading" id="test-model-icon"></div>
-        <span class="test-name">AI 大脑配置</span>
-        <span class="test-msg" id="test-model-msg">等待中...</span>
-        <button class="retry-btn hidden" id="test-model-retry" onclick="retrySingleTest('model')">重试</button>
+        <span class="test-name">${wl('AI 大脑配置', 'AI model config')}</span>
+        <span class="test-msg" id="test-model-msg">${wl('等待中...', 'Waiting...')}</span>
+        <button class="retry-btn hidden" id="test-model-retry" onclick="retrySingleTest('model')">${wl('重试', 'Retry')}</button>
       </div>
       <div class="test-item" id="test-tts">
         <div class="status-icon loading" id="test-tts-icon"></div>
-        <span class="test-name">蛋宠声带</span>
-        <span class="test-msg" id="test-tts-msg">等待中...</span>
-        <button class="retry-btn hidden" id="test-tts-retry" onclick="retrySingleTest('tts')">重试</button>
+        <span class="test-name">${wl('蛋宠声带', 'TTS voice')}</span>
+        <span class="test-msg" id="test-tts-msg">${wl('等待中...', 'Waiting...')}</span>
+        <button class="retry-btn hidden" id="test-tts-retry" onclick="retrySingleTest('tts')">${wl('重试', 'Retry')}</button>
       </div>
       <div class="test-item" id="test-voice">
         <div class="status-icon loading" id="test-voice-icon"></div>
-        <span class="test-name">播报链路</span>
-        <span class="test-msg" id="test-voice-msg">等待中...</span>
-        <button class="retry-btn hidden" id="test-voice-retry" onclick="retrySingleTest('voice')">重试</button>
+        <span class="test-name">${wl('播报链路', 'Delivery pipeline')}</span>
+        <span class="test-msg" id="test-voice-msg">${wl('等待中...', 'Waiting...')}</span>
+        <button class="retry-btn hidden" id="test-voice-retry" onclick="retrySingleTest('voice')">${wl('重试', 'Retry')}</button>
       </div>
       <div class="test-item" id="test-lyrics">
         <div class="status-icon loading" id="test-lyrics-icon"></div>
-        <span class="test-name">桌面歌词</span>
-        <span class="test-msg" id="test-lyrics-msg">等待中...</span>
+        <span class="test-name">${wl('桌面歌词', 'Desktop captions')}</span>
+        <span class="test-msg" id="test-lyrics-msg">${wl('等待中...', 'Waiting...')}</span>
       </div>
       <div class="test-item" id="test-files">
         <div class="status-icon loading" id="test-files-icon"></div>
-        <span class="test-name">孵化契约文件</span>
-        <span class="test-msg" id="test-files-msg">等待中...</span>
+        <span class="test-name">${wl('孵化契约文件', 'Core files')}</span>
+        <span class="test-msg" id="test-files-msg">${wl('等待中...', 'Waiting...')}</span>
       </div>
       <div class="test-item" id="test-clone">
         <div class="status-icon loading" id="test-clone-icon"></div>
-        <span class="test-name">自定义音色</span>
-        <span class="test-msg" id="test-clone-msg">等待中...</span>
+        <span class="test-name">${wl('自定义音色', 'Custom voice')}</span>
+        <span class="test-msg" id="test-clone-msg">${wl('等待中...', 'Waiting...')}</span>
       </div>
     </div>
   `);
@@ -2924,14 +3133,14 @@ async function renderStep6() {
 
     const allPass = Object.values(results).every(r => r.status === 'pass' || r.status === 'skip');
     if (allPass) {
-      await addBubble('全部孵化完成啦！！！ ✧*。(>_<)✧*。');
+      await addBubble(wl('全部孵化完成啦！！！ ✧*。(>_<)✧*。', 'All setup checks passed!'));
       showCelebration();
     } else {
       const failCount = Object.values(results).filter(r => r.status === 'fail').length;
-      await addBubble(`还有 ${failCount} 项验收没通过，不过没关系，后面可以继续补喂和调整。`);
+      await addBubble(wl(`还有 ${failCount} 项验收没通过，不过没关系，后面可以继续补喂和调整。`, `${failCount} checks did not pass yet. You can fix them later.`));
     }
   } catch (err) {
-    await addBubble('验收过程出错了: ' + err.message + ' (>_<)');
+    await addBubble(wl('验收过程出错了: ', 'Validation error: ') + err.message);
   }
 
   document.getElementById('btnNext').disabled = false;
@@ -2971,7 +3180,7 @@ async function retrySingleTest(testKey) {
 
   icon.className = 'status-icon loading';
   icon.textContent = '';
-  msg.textContent = '重试中...';
+  msg.textContent = wl('重试中...', 'Retrying...');
   if (retryBtn) retryBtn.classList.add('hidden');
 
   try {
@@ -3013,13 +3222,13 @@ async function completeWizard() {
     // Save any remaining settings from step 5
     if (currentStep === 6) {
       await wizardAPI.invoke('wizard-complete');
-      await addBubble('所有孵化设置已保存！这颗蛋会继续陪着你慢慢长大。(^_^) 窗口即将关闭...');
+      await addBubble(wl('所有孵化设置已保存！这颗蛋会继续陪着你慢慢长大。(^_^) 窗口即将关闭...', 'All settings saved. The egg will keep growing with you. Closing window...'));
       setTimeout(() => {
         window.close();
       }, 2000);
     }
   } catch (err) {
-    await addBubble('保存出错了: ' + err.message + ' (T_T)');
+    await addBubble(wl('保存出错了: ', 'Save error: ') + err.message);
   }
 }
 
@@ -3028,11 +3237,13 @@ async function init() {
   // Load existing config
   try {
     const config = await wizardAPI.invoke('wizard-get-config');
+    uiLanguage = normalizeWizardLanguage(config.uiLanguage);
     if (config.channels && Object.keys(config.channels).length > 0) {
       stepData.channels = { ...stepData.channels, ...config.channels };
     }
     stepData.lyricsEnabled = config.lyricsEnabled !== false;
     stepData.alwaysOnTop = config.alwaysOnTop !== false;
+    stepData.autoLaunch = config.autoLaunch === true;
 
     // Resume from saved wizard step
     const savedStep = config.wizardStep || 0;
@@ -3041,6 +3252,22 @@ async function init() {
       maxVisitedStep = savedStep;
     }
   } catch (e) { /* use defaults */ }
+
+  try {
+    const appLang = await wizardAPI.invoke('app-get-language');
+    uiLanguage = normalizeWizardLanguage(appLang || uiLanguage);
+  } catch {}
+
+  applyWizardLanguage();
+
+  wizardAPI.on('app-language-changed', async (lang) => {
+    const normalized = normalizeWizardLanguage(lang);
+    if (normalized === uiLanguage) return;
+    uiLanguage = normalized;
+    applyWizardLanguage();
+    clearChat();
+    await renderStep(currentStep);
+  });
 
   updateProgress();
   await renderStep(currentStep);

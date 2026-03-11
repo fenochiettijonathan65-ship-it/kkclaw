@@ -30,10 +30,13 @@ const VALID_INVOKE_CHANNELS = [
   'install-edge-tts',
   'install-dashscope',
   'open-external',
+  'app-get-language',
+  'app-set-language'
 ];
 
 const VALID_ON_CHANNELS = [
   'soul-infuse-progress',
+  'app-language-changed'
 ];
 
 contextBridge.exposeInMainWorld('wizardAPI', {

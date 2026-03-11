@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>EggClaw 🥚</title>
+<title>SparkEgg 🥚</title>
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
     *::-webkit-scrollbar { display: none; }
@@ -307,28 +307,45 @@
 
     .state-pill {
         position: absolute;
-        top: calc(50% + 42px);
+        top: calc(50% + 48px);
         left: 50%;
         transform: translateX(-50%);
-        min-width: 110px;
-        padding: 4px 12px;
-        border-radius: 999px;
+        min-width: 136px;
+        max-width: 178px;
+        padding: 5px 11px 6px;
+        border-radius: 13px;
         background: rgba(255,255,255,0.82);
         color: #5c6f9c;
         font-size: 10px;
         font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        letter-spacing: 0.02em;
         text-align: center;
+        line-height: 1.24;
         box-shadow: 0 4px 12px rgba(76, 101, 152, 0.12);
         z-index: 15;
         pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .state-pill .pill-main {
+        font-size: 10px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .state-pill .pill-sub {
+        font-size: 9px;
+        color: #7489b3;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     /* ===== 图标工具栏 ===== */
     .toolbar {
         position: absolute;
-        top: calc(50% + 58px);
+        top: calc(50% + 78px);
         left: 50%;
         transform: translateX(-50%);
         display: flex;
@@ -524,7 +541,7 @@
         <div class="bub bub-2"></div>
         <div class="particles" id="particles"></div>
     </div>
-    <div class="state-pill" id="statePill">休眠 · 蛋宝</div>
+    <div class="state-pill" id="statePill">...</div>
 
     <!-- 图标工具栏 -->
     <div class="toolbar" id="toolbar">
@@ -575,14 +592,42 @@ const shellLines = document.querySelector('.shell-lines');
 let voiceOn = true;
 let isConnected = false;
 let isAwaitingReply = false;
+let growthProfile = { connected: false, energy: 0, level: 1, stars: 1 };
+let uiLanguage = 'zh-CN';
+
+function normalizeLang(lang) {
+    if (!lang || typeof lang !== 'string') return 'zh-CN';
+    if (lang === 'zh-CN' || lang === 'en-US') return lang;
+    return lang.toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN';
+}
+
+function wl(zh, en) {
+    return uiLanguage === 'en-US' ? en : zh;
+}
+
+function updateUiTextByLanguage() {
+    const input = document.getElementById('input');
+    const btnChat = document.getElementById('btnChat');
+    const btnVoiceLocal = document.getElementById('btnVoice');
+    const btnShot = document.getElementById('btnScreenshot');
+    const btnModel = document.getElementById('btnModelSwitch');
+    if (input) input.placeholder = wl('说点什么...', 'Say something...');
+    if (btnChat) btnChat.title = wl('发消息', 'Send message');
+    if (btnVoiceLocal) btnVoiceLocal.title = voiceOn ? wl('关闭播报', 'Disable voice') : wl('开启播报', 'Enable voice');
+    if (btnShot) btnShot.title = wl('截图', 'Screenshot');
+    if (btnModel && !btnModel.title.includes('当前') && !btnModel.title.includes('Current')) {
+        btnModel.title = wl('切换模型', 'Switch model');
+    }
+}
 
 function updateStatePill() {
     if (!statePill) return;
-    if (isAwaitingReply) {
-        statePill.textContent = `思考中 · ${PET_NAME}`;
-        return;
-    }
-    statePill.textContent = formatStatePill(currentMood);
+    const moodLabel = isAwaitingReply ? wl('思考中', 'Thinking') : (STATE_LABELS[currentMood]?.[uiLanguage] || wl('稳定', 'Stable'));
+    const mainText = `${moodLabel} · ${PET_NAME}`;
+    const subText = growthProfile && growthProfile.connected
+        ? `Lv${growthProfile.level} · ${wl('能量', 'Energy')}${growthProfile.energy}`
+        : `Lv1 · ${wl('能量', 'Energy')}0`;
+    statePill.innerHTML = `<span class="pill-main">${mainText}</span><span class="pill-sub">${subText}</span>`;
 }
 
 function notifyReplyBubbleRendered(responseId) {
@@ -600,7 +645,7 @@ function renderVoiceButton() {
         ? '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M18.5 5.5a9 9 0 0 1 0 13"></path></svg>'
         : '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon><line x1="15" y1="9" x2="21" y2="15"></line><line x1="21" y1="9" x2="15" y2="15"></line></svg>';
     btnVoice.classList.toggle('active', voiceOn);
-    btnVoice.title = voiceOn ? '关闭播报' : '开启播报';
+    btnVoice.title = voiceOn ? wl('关闭播报', 'Disable voice') : wl('开启播报', 'Enable voice');
 }
 
 // ===== 60fps 动画 =====
@@ -1068,26 +1113,42 @@ const MOODS = {
 };
 let currentMood = 'idle', talkInterval = null;
 const STATE_LABELS = {
-    offline: '休眠',
-    idle: '稳定',
-    happy: '充能',
-    talking: '共鸣',
-    thinking: '演算',
-    sleepy: '低耗',
-    surprised: '跃迁',
-    sad: '回落',
-    angry: '过载',
-    fearful: '波动',
-    calm: '恒温',
-    excited: '沸腾',
-    love: '亲和',
-    focused: '聚能'
+    offline: { 'zh-CN': '休眠', 'en-US': 'Offline' },
+    idle: { 'zh-CN': '稳定', 'en-US': 'Stable' },
+    happy: { 'zh-CN': '充能', 'en-US': 'Charging' },
+    talking: { 'zh-CN': '共鸣', 'en-US': 'Speaking' },
+    thinking: { 'zh-CN': '演算', 'en-US': 'Thinking' },
+    sleepy: { 'zh-CN': '低耗', 'en-US': 'Low Power' },
+    surprised: { 'zh-CN': '跃迁', 'en-US': 'Surged' },
+    sad: { 'zh-CN': '回落', 'en-US': 'Cooling' },
+    angry: { 'zh-CN': '过载', 'en-US': 'Overload' },
+    fearful: { 'zh-CN': '波动', 'en-US': 'Fluctuating' },
+    calm: { 'zh-CN': '恒温', 'en-US': 'Calm' },
+    excited: { 'zh-CN': '沸腾', 'en-US': 'Excited' },
+    love: { 'zh-CN': '亲和', 'en-US': 'Affection' },
+    focused: { 'zh-CN': '聚能', 'en-US': 'Focused' }
 };
 
 const PET_NAME = '闪电⚡️';
 
+function deriveGrowthProfile(metrics = {}) {
+    const uptimeHours = (metrics.uptimeMs || 0) / 3600000;
+    const onlineEnergy = Math.round(uptimeHours * 6);
+    const skillEnergy = (metrics.readySkills || 0) * 4;
+    const workEnergy = (metrics.workCount || 0) * 3 + (metrics.requestsTotal || 0) * 4 + Math.floor((metrics.estimatedTokens || 0) / 1200);
+    const totalEnergy = Math.max(0, onlineEnergy + skillEnergy + workEnergy);
+    const level = Math.min(99, 1 + Math.floor(Math.sqrt(totalEnergy / 12)));
+    const stars = Math.max(1, Math.min(5, 1 + Math.floor((level - 1) / 8)));
+    return {
+        connected: !!metrics.connected,
+        energy: totalEnergy,
+        level,
+        stars
+    };
+}
+
 function formatStatePill(mood) {
-    return `${STATE_LABELS[mood] || '稳定'} · ${PET_NAME}`;
+    return `${STATE_LABELS[mood]?.[uiLanguage] || wl('稳定', 'Stable')} · ${PET_NAME}`;
 }
 
 const SHELL_THEMES = {
@@ -1155,7 +1216,9 @@ function applySeriesTheme(theme) {
 async function refreshGrowthSeries() {
     try {
         const metrics = await window.electronAPI.invoke('egg-growth-metrics');
+        growthProfile = deriveGrowthProfile(metrics);
         applySeriesTheme(selectGrowthSeries(metrics));
+        updateStatePill();
     } catch (err) {
         console.warn('egg-growth-metrics failed:', err.message);
     }
@@ -1656,8 +1719,8 @@ function updateModelBadge(model) {
     modelBadge.style.color = model.color;
     currentModelColor = model.color;
     if (btnModelSwitch) {
-        const currentName = model.shortName || model.name || model.id || '未知模型';
-        btnModelSwitch.title = `切换模型（当前：${currentName}）`;
+        const currentName = model.shortName || model.name || model.id || wl('未知模型', 'Unknown model');
+        btnModelSwitch.title = wl(`切换模型（当前：${currentName}）`, `Switch model (current: ${currentName})`);
     }
 }
 
@@ -1674,6 +1737,20 @@ function flashModelSwitch(color) {
 
 // 初始化时获取当前模型
 if (electronAPI) {
+    electronAPI.invoke('app-get-language').then((lang) => {
+        uiLanguage = normalizeLang(lang || uiLanguage);
+        updateUiTextByLanguage();
+        updateStatePill();
+    }).catch(() => {
+        updateUiTextByLanguage();
+        updateStatePill();
+    });
+    electronAPI.on('app-language-changed', (lang) => {
+        uiLanguage = normalizeLang(lang || uiLanguage);
+        updateUiTextByLanguage();
+        updateStatePill();
+    });
+
     electronAPI.invoke('get-voice-enabled').then((enabled) => {
         voiceOn = enabled !== false;
         renderVoiceButton();
@@ -1796,6 +1873,7 @@ if (electronAPI) {
 }
 
 // 初始化 — 先显示离线，等连接成功后复活
+updateUiTextByLanguage();
 setMood('offline');
 refreshGrowthSeries();
 setInterval(refreshGrowthSeries, 30000);
